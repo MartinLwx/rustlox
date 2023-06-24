@@ -12,6 +12,15 @@ impl From<OpCode> for u8 {
     }
 }
 
+impl From<u8> for OpCode {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => OpCode::Return,
+            _ => unimplemented!("May be later")
+        }
+    }
+}
+
 /// A chunk is a series of instrucitons
 #[derive(Debug)]
 pub struct Chunk {
