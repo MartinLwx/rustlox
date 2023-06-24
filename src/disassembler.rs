@@ -15,10 +15,7 @@ fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     print!("{offset:04} ");
     match chunk.code[offset].into() {
         OpCode::Return => simple_instruction("OP_RETURN", offset),
-        _ => {
-            println!("Unknown");
-            offset + 1
-        }
+        OpCode::Constant => constant_instruction("OP_CONSTANT", chunk, offset),
     }
 }
 
@@ -26,3 +23,11 @@ fn simple_instruction(name: &str, offset: usize) -> usize {
     println!("{name}");
     offset + 1
 }
+
+fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
+    let constant_idx = chunk.code[offset + 1];
+    print!("{name:-16} {constant_idx:04} ");
+    println!("{:?}", chunk.constants.values[constant_idx as usize]);
+    offset + 2
+}
+

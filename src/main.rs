@@ -7,6 +7,8 @@ use disassembler::disassemble_chunk;
 
 fn main() {
     let mut chunk = Chunk::new();
-    chunk.write(OpCode::Return);
+    let constant = chunk.add_constant(1.2);
+    chunk.write(OpCode::Constant);
+    chunk.write(constant as u8);
     disassemble_chunk(&chunk, "test chunk");
 }
