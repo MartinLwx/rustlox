@@ -1,4 +1,4 @@
-use crate::chunk::{OpCode, Chunk};
+use crate::chunk::{Chunk, OpCode};
 
 /// Disassemble all of the instructions in the entire chunk
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
@@ -11,13 +11,13 @@ pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
 
 /// Disassemble a single instruction and return the offset of
 /// the next instruction, as the instructions can have different sizes
-fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
+pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     print!("{offset:04} ");
     if offset > 0 && chunk.lines[offset] == chunk.lines[offset - 1] {
         // Show a | for any instruction that comes from the same source line as the preceding one.
         print!("  |  ");
     } else {
-        print!("{:04} ", chunk.lines[offset]);
+        print!("{:4} ", chunk.lines[offset]);
     }
     match chunk.code[offset].into() {
         OpCode::Return => simple_instruction("OP_RETURN", offset),
@@ -36,4 +36,3 @@ fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     println!("'{:?}'", chunk.constants.values[constant_idx as usize]);
     offset + 2
 }
-

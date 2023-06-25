@@ -31,7 +31,7 @@ impl From<u8> for OpCode {
 pub struct Chunk {
     pub code: Vec<u8>,
     pub constants: ValueArray,
-    pub lines: Vec<i32>,
+    pub lines: Vec<usize>,
 }
 
 impl Chunk {
@@ -43,7 +43,7 @@ impl Chunk {
         }
     }
 
-    pub fn write<T>(&mut self, byte: T, line: i32)
+    pub fn write<T>(&mut self, byte: T, line: usize)
     where
         T: Into<u8>,
     {

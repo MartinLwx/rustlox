@@ -8,9 +8,7 @@ pub struct ValueArray {
 
 impl ValueArray {
     pub fn new() -> Self {
-        Self {
-            values: vec![],
-        }
+        Self { values: vec![] }
     }
     pub fn write(&mut self, val: Value) {
         self.values.push(val);
