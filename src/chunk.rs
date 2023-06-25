@@ -31,6 +31,7 @@ impl From<u8> for OpCode {
 pub struct Chunk {
     pub code: Vec<u8>,
     pub constants: ValueArray,
+    pub lines: Vec<i32>,
 }
 
 impl Chunk {
@@ -38,14 +39,16 @@ impl Chunk {
         Self {
             code: vec![],
             constants: ValueArray::new(),
+            lines: vec![],
         }
     }
 
-    pub fn write<T>(&mut self, byte: T)
+    pub fn write<T>(&mut self, byte: T, line: i32)
     where
         T: Into<u8>,
     {
         self.code.push(byte.into());
+        self.lines.push(line);
     }
 
     pub fn add_constant(&mut self, val: Value) -> usize {
