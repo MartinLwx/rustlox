@@ -9,9 +9,25 @@ use vm::VM;
 fn main() {
     let mut virtual_machine = VM::new();
     let mut chunk = Chunk::new();
+
     let constant = chunk.add_constant(1.2);
     chunk.write(OpCode::Constant, 0);
-    chunk.write(constant as u8, 1);
-    chunk.write(OpCode::Return, 2);
+    chunk.write(constant as u8, 0);
+
+    let constant = chunk.add_constant(3.4);
+    chunk.write(OpCode::Constant, 0);
+    chunk.write(constant as u8, 0);
+
+    chunk.write(OpCode::Add, 0);
+
+    let constant = chunk.add_constant(5.6);
+    chunk.write(OpCode::Constant, 0);
+    chunk.write(constant as u8, 0);
+
+    chunk.write(OpCode::Divide, 0);
+
+    chunk.write(OpCode::Negate, 0);
+    chunk.write(OpCode::Return, 0);
+
     virtual_machine.interpret(chunk);
 }

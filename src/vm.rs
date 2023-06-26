@@ -8,8 +8,6 @@ pub enum InterpretResult {
     RuntimeError,
 }
 
-const STACK_MAX: usize = 256;
-
 pub struct VM {
     chunk: Chunk,
 
@@ -48,19 +46,29 @@ impl VM {
         self.chunk.constants.values[constant_idx as usize]
     }
 
+    fn binary_operator<F>(&mut self, op: F)
+    where
+        F: Fn(Value, Value) -> Value,
+    {
+        // use Fn s.t. we can pass either a closure or a function pointer(fn)
+        let val2 = self.stack.pop().unwrap();
+        let val1 = self.stack.pop().unwrap();
+        self.stack.push(op(val1, val2))
+    }
+
     fn run(&mut self) -> InterpretResult {
         loop {
             // stack tracing - show the current contents of the stack before we interpret each
             // instruction
             #[cfg(debug_assertions)]
-            for val in &self.stack {
-                print!("[ {val} ]");
+            {
+                print!("          ");
+                for val in &self.stack {
+                    print!("[ {val} ]");
+                }
+                println!();
+                disassemble_instruction(&self.chunk, self.ip);
             }
-            #[cfg(debug_assertions)]
-            println!();
-
-            #[cfg(debug_assertions)]
-            disassemble_instruction(&self.chunk, self.ip);
 
             let instruction = self.read_byte();
             match instruction {
@@ -72,6 +80,15 @@ impl VM {
                     let constant = self.read_constant();
                     self.stack.push(constant);
                 }
+                OpCode::Negate => {
+                    if let Some(v) = self.stack.pop() {
+                        self.stack.push(-v);
+                    }
+                }
+                OpCode::Add => self.binary_operator(|x, y| x + y),
+                OpCode::Substract => self.binary_operator(|x, y| x - y),
+                OpCode::Multiply => self.binary_operator(|x, y| x * y),
+                OpCode::Divide => self.binary_operator(|x, y| x / y),
             }
         }
     }

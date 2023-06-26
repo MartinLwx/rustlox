@@ -8,6 +8,12 @@ pub enum OpCode {
     Return,
     /// Produce a particular constant
     Constant,
+    /// Negate a value
+    Negate,
+    Add,
+    Substract,
+    Multiply,
+    Divide,
 }
 
 impl From<OpCode> for u8 {
@@ -19,8 +25,13 @@ impl From<OpCode> for u8 {
 impl From<u8> for OpCode {
     fn from(value: u8) -> Self {
         match value {
-            0 => OpCode::Return,
-            1 => OpCode::Constant,
+            0 => Self::Return,
+            1 => Self::Constant,
+            2 => Self::Negate,
+            3 => Self::Add,
+            4 => Self::Substract,
+            5 => Self::Multiply,
+            6 => Self::Divide,
             _ => unimplemented!("May be later"),
         }
     }
