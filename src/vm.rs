@@ -1,6 +1,7 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::disassembler::disassemble_instruction;
 use crate::value::Value;
+use crate::compiler::compile;
 
 pub enum InterpretResult {
     Ok,
@@ -28,10 +29,10 @@ impl VM {
     }
 
     /// Runs the chunk and then responds with a value
-    pub fn interpret(&mut self, another_chunk: Chunk) -> InterpretResult {
-        self.chunk = another_chunk;
+    pub fn interpret(&mut self, source: &str) -> InterpretResult {
+        compile(source);
 
-        self.run()
+        InterpretResult::Ok
     }
 
     /// Read the current bytepointed byte `self.ip` as an instruction and then advances the `self.ip`
