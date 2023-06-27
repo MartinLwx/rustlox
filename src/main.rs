@@ -18,8 +18,8 @@ fn repl(vm: &mut VM) {
                 break;
             }
         }
+        vm.interpret(&line);
     }
-    vm.interpret(&line);
 }
 
 fn run_file(filename: &str, vm: &mut VM) {
