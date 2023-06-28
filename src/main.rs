@@ -5,15 +5,15 @@ mod scanner;
 mod value;
 mod vm;
 
-use std::{fs, io, io::Read, process};
+use std::{fs, io, io::Read, io::Write, process};
 use vm::{InterpretResult, VM};
 
 fn repl(vm: &mut VM) {
-    let mut line = String::new();
     loop {
         print!("> ");
+        io::stdout().flush().expect("Write to stdout failed");
+        let mut line = String::new();
         if let Ok(size) = io::stdin().read_line(&mut line) {
-            println!();
             if size == 0 {
                 break;
             }

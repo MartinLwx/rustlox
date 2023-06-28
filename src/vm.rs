@@ -1,7 +1,7 @@
 use crate::chunk::{Chunk, OpCode};
+use crate::compiler::compile;
 use crate::disassembler::disassemble_instruction;
 use crate::value::Value;
-use crate::compiler::compile;
 
 pub enum InterpretResult {
     Ok,

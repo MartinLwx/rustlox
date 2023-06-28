@@ -36,11 +36,11 @@ pub enum TokenType {
     Or,
     Print,
     Return,
-    Supser,
+    Super,
     This,
     True,
     Var,
-    White,
+    While,
     Eof,
     Error,
 }
@@ -82,7 +82,7 @@ impl Scanner {
     fn make_token(&self, token: TokenType) -> Token {
         Token {
             r#type: token,
-            lexeme: String::new(),
+            lexeme: self.source[self.start..self.current].iter().collect(),
             line: self.line,
         }
     }
@@ -117,6 +117,10 @@ impl Scanner {
     }
 
     fn peek(&self) -> char {
+        // todo: or change self.peek() to return Option<char>
+        if self.is_at_end() {
+            return '\0';
+        }
         self.source[self.current]
     }
 
@@ -147,7 +151,7 @@ impl Scanner {
                 ' ' | '\r' | '\t' => {
                     self.advance();
                 }
-                _ => (),
+                _ => return (),
             }
         }
     }
@@ -185,6 +189,64 @@ impl Scanner {
         self.make_token(TokenType::Number)
     }
 
+    fn check_keyword(
+        &self,
+        start: usize,
+        length: usize,
+        rest: &str,
+        token_type: TokenType,
+    ) -> TokenType {
+        if self.current - self.start == start + length
+            && self.source[self.start + start..self.current]
+                .iter()
+                .collect::<String>()
+                == rest
+        {
+            token_type
+        } else {
+            TokenType::Identifier
+        }
+    }
+
+    /// By using the Trie data structure to decide if an identifier is a keyword
+    fn identifier_type(&self) -> TokenType {
+        match self.source[self.start] {
+            'a' => self.check_keyword(1, 2, "nd", TokenType::And),
+            'c' => self.check_keyword(1, 4, "lass", TokenType::Class),
+            'e' => self.check_keyword(1, 3, "lse", TokenType::Else),
+            'i' => self.check_keyword(1, 1, "f", TokenType::If),
+            'f' if self.current - self.start > 1 => match self.source[self.start + 1] {
+                'a' => self.check_keyword(2, 3, "lse", TokenType::False),
+                'o' => self.check_keyword(2, 1, "r", TokenType::For),
+                'u' => self.check_keyword(2, 1, "n", TokenType::Fun),
+                _ => TokenType::Identifier,
+            },
+            'n' => self.check_keyword(1, 2, "il", TokenType::Nil),
+            'o' => self.check_keyword(1, 1, "r", TokenType::Or),
+            'p' => self.check_keyword(1, 4, "rint", TokenType::Print),
+            'r' => self.check_keyword(1, 5, "eturn", TokenType::Return),
+            's' => self.check_keyword(1, 4, "uper", TokenType::Super),
+            't' if self.current - self.start > 1 => match self.source[self.start + 1] {
+                'h' => self.check_keyword(2, 2, "is", TokenType::This),
+                'r' => self.check_keyword(2, 2, "ue", TokenType::True),
+                _ => TokenType::Identifier,
+            },
+            'v' => self.check_keyword(1, 2, "ar", TokenType::Var),
+            'w' => self.check_keyword(1, 4, "hile", TokenType::While),
+            _ => TokenType::Identifier,
+        }
+    }
+
+    fn make_identifier(&mut self) -> Token {
+        while self.peek() == '_'
+            || self.peek().is_ascii_alphabetic()
+            || self.peek().is_ascii_digit()
+        {
+            self.advance();
+        }
+        self.make_token(self.identifier_type())
+    }
+
     /// Returns the next token in the source code
     pub fn scan_token(&mut self) -> Token {
         self.skip_whitespace();
@@ -215,6 +277,7 @@ impl Scanner {
             '>' if self.my_match('=') => self.make_token(TokenType::GreaterEqual),
             '>' => self.make_token(TokenType::Greater),
             ch if ch.is_ascii_digit() => self.make_number(),
+            ch if ch.is_ascii_alphabetic() || ch == '_' => self.make_identifier(),
             '"' => self.make_string(),
             _ => self.error_token("Unexpcted character."),
         }
