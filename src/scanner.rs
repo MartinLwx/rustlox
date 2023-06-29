@@ -147,7 +147,7 @@ impl Scanner {
                 ' ' | '\r' | '\t' => {
                     self.advance();
                 }
-                _ => return (),
+                _ => return,
             }
         }
     }

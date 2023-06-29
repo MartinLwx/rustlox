@@ -30,9 +30,9 @@ impl VM {
 
     /// Runs the chunk and then responds with a value
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
-        let mut compiler = Compiler::new();
         let mut chunk = Chunk::new();
-        compiler.compile(source, &mut chunk);
+        let mut compiler = Compiler::new(&mut chunk);
+        compiler.compile(source);
         self.chunk = chunk;
 
         self.run()
