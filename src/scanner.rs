@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub enum TokenType {
     // Single-character tokens
     LeftParen,
@@ -41,11 +41,12 @@ pub enum TokenType {
     True,
     Var,
     While,
+    #[default]
     Eof,
     Error,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Token {
     pub r#type: TokenType,
     pub lexeme: String,
@@ -70,13 +71,8 @@ impl Scanner {
             line: 1,
         }
     }
-    pub fn init_scanner(source: &str) -> Self {
-        Self {
-            start: 0,
-            current: 0,
-            line: 1,
-            source: source.chars().collect(),
-        }
+    pub fn init_scanner(&mut self, source: &str) {
+        self.source = source.chars().collect();
     }
 
     fn make_token(&self, token: TokenType) -> Token {

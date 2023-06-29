@@ -1,5 +1,5 @@
 use crate::chunk::{Chunk, OpCode};
-use crate::compiler::compile;
+use crate::compiler::Compiler;
 use crate::disassembler::disassemble_instruction;
 use crate::value::Value;
 
@@ -30,9 +30,12 @@ impl VM {
 
     /// Runs the chunk and then responds with a value
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
-        compile(source);
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::new();
+        compiler.compile(source, &mut chunk);
+        self.chunk = chunk;
 
-        InterpretResult::Ok
+        self.run()
     }
 
     /// Read the current bytepointed byte `self.ip` as an instruction and then advances the `self.ip`
