@@ -1,7 +1,9 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::scanner::{Scanner, Token, TokenType};
+use crate::value::Value;
 use crate::vm::InterpretResult;
 
+#[derive(Default)]
 struct Parser {
     current: Token,
     previous: Token,
@@ -9,20 +11,25 @@ struct Parser {
     panic_mode: bool,
 }
 
-impl Parser {
-    pub fn new() -> Self {
-        Self {
-            current: Token::default(),
-            previous: Token::default(),
-            had_error: false,
-            panic_mode: false,
-        }
-    }
+#[derive(PartialEq, PartialOrd)]
+enum Precedence {
+    None,
+    Assignment, // =
+    Or,         // or
+    And,        // and
+    Equality,   // == !=
+    Comparison, // < > <= >=
+    Term,       // + -
+    Factor,     // * /
+    Unary,      // ! -
+    Call,       // . ()
+    Primary,
 }
 
 pub struct Compiler<'a> {
     scanner: Scanner,
     parser: Parser,
+    // use a reference to avoid the overhead of copy the whole chunk
     compiling_chunk: &'a mut Chunk,
 }
 
@@ -30,7 +37,7 @@ impl<'a> Compiler<'a> {
     pub fn new(chunk: &'a mut Chunk) -> Self {
         Self {
             scanner: Scanner::new(),
-            parser: Parser::new(),
+            parser: Parser::default(),
             compiling_chunk: chunk,
         }
     }
@@ -41,11 +48,11 @@ impl<'a> Compiler<'a> {
             return;
         }
         self.parser.panic_mode = true;
-        eprint!("[line{}]Error", token.line);
+        eprint!("[line {}] Error", token.line);
         match token.r#type {
             TokenType::Eof => eprint!(" at end"),
             TokenType::Error => eprint!(""),
-            _ => eprint!(" at {} {}", token.lexeme.len(), token.lexeme),
+            _ => eprint!(" at '{}'", token.lexeme),
         }
         eprintln!(": {msg}");
         self.parser.had_error = true;
@@ -74,7 +81,9 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn expression(&self) {}
+    fn expression(&self) {
+        self.parse_precedence(Precedence::Assignment);
+    }
 
     fn consume(&mut self, token_type: TokenType, msg: &str) {
         if self.parser.current.r#type == token_type {
@@ -93,16 +102,22 @@ impl<'a> Compiler<'a> {
         T: Into<u8>,
     {
         let lineno = self.parser.previous.line;
-        self.current_chunk().write(byte, lineno);
+        self.current_chunk().write(byte.into(), lineno);
     }
 
     // A utlity function which write two bytes (one-byte Opcode + one-byte Operand)
-    fn emit_bytes<T>(&mut self, byte1: T, byte2: T)
+    fn emit_bytes<T, U>(&mut self, byte1: T, byte2: U)
     where
         T: Into<u8>,
+        U: Into<u8>,
     {
-        self.emit_byte(byte1);
-        self.emit_byte(byte2);
+        self.emit_byte(byte1.into());
+        self.emit_byte(byte2.into());
+    }
+
+    fn emit_constant(&mut self, value: Value) {
+        let cosntant_idx = self.make_constant(value);
+        self.emit_bytes(OpCode::Constant, cosntant_idx);
     }
 
     fn emit_return(&mut self) {
@@ -113,11 +128,48 @@ impl<'a> Compiler<'a> {
         self.emit_return();
     }
 
+    /// Try to add the value to constants, return 0 if we got too many constants
+    fn make_constant(&mut self, value: Value) -> u8 {
+        let Ok(constant_idx) = self.current_chunk().add_constant(value).try_into() else {
+            self.error("Too many constants in one chunk.");
+            // todo: or return a Result<T, E>?
+            return 0;
+        };
+        constant_idx
+    }
+
+    fn number(&mut self) {
+        let value: f64 = self.parser.previous.lexeme.parse().unwrap();
+        self.emit_constant(value);
+    }
+
+    fn grouping(&mut self) {
+        // Assumption: the initial '(' has already been consumed
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after expression.");
+    }
+
+    fn unary(&mut self) {
+        let operator_type = self.parser.previous.r#type.clone();
+
+        // Compile the operand
+        self.parse_precedence(Precedence::Unary);
+
+        // Emit the operator instruction
+        match operator_type {
+            TokenType::Minus => self.emit_byte(OpCode::Negate),
+            _ => panic!("Unreachable!"),
+        }
+    }
+
+    fn parse_precedence(&self, precedence: Precedence) {}
+
     pub fn compile(&mut self, source: &str) -> InterpretResult {
         self.scanner.init_scanner(source);
         self.advance();
         self.expression();
         self.consume(TokenType::Eof, "Expect end of expression.");
+        self.end_compiler();
         if self.parser.had_error {
             InterpretResult::CompileError
         } else {
