@@ -26,6 +26,76 @@ enum Precedence {
     Primary,
 }
 
+impl Precedence {
+    pub fn next(self) -> Self {
+        match self {
+            Self::None => Self::Assignment,
+            Self::Assignment => Self::Or,
+            Self::Or => Self::And,
+            Self::And => Self::Equality,
+            Self::Equality => Self::Comparison,
+            Self::Comparison => Self::Term,
+            Self::Term => Self::Factor,
+            Self::Factor => Self::Unary,
+            Self::Unary => Self::Call,
+            Self::Call => Self::Primary,
+            Self::Primary => panic!("Impossible"),
+        }
+    }
+}
+
+/// A function type that takes no arguments and returns nothing
+type ParseFn<'a> = fn(&mut Compiler<'a>) -> (); // function pointer
+
+/// The three properties which represents a single row in the Pratt parser table
+struct ParseRule<'a> {
+    prefix: Option<ParseFn<'a>>,
+    infix: Option<ParseFn<'a>>,
+    precedence: Precedence,
+}
+
+impl<'a> ParseRule<'a> {
+    fn get_rule(op_type: TokenType) -> ParseRule<'a> {
+        match op_type {
+            TokenType::LeftParen => ParseRule {
+                prefix: Some(Compiler::grouping),
+                infix: None,
+                precedence: Precedence::None,
+            },
+            TokenType::Minus => ParseRule {
+                prefix: Some(Compiler::unary),
+                infix: Some(Compiler::binary),
+                precedence: Precedence::Term,
+            },
+            TokenType::Plus => ParseRule {
+                prefix: None,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::Term,
+            },
+            TokenType::Slash => ParseRule {
+                prefix: None,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::Factor,
+            },
+            TokenType::Star => ParseRule {
+                prefix: None,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::Factor,
+            },
+            TokenType::Number => ParseRule {
+                prefix: Some(Compiler::number),
+                infix: None,
+                precedence: Precedence::Factor,
+            },
+            _ => ParseRule {
+                prefix: None,
+                infix: None,
+                precedence: Precedence::None,
+            },
+        }
+    }
+}
+
 pub struct Compiler<'a> {
     scanner: Scanner,
     parser: Parser,
@@ -49,7 +119,7 @@ impl<'a> Compiler<'a> {
         }
         self.parser.panic_mode = true;
         eprint!("[line {}] Error", token.line);
-        match token.r#type {
+        match token.token_type {
             TokenType::Eof => eprint!(" at end"),
             TokenType::Error => eprint!(""),
             _ => eprint!(" at '{}'", token.lexeme),
@@ -73,7 +143,7 @@ impl<'a> Compiler<'a> {
         self.parser.previous = std::mem::take(&mut self.parser.current);
         loop {
             self.parser.current = self.scanner.scan_token();
-            if self.parser.current.r#type != TokenType::Error {
+            if self.parser.current.token_type != TokenType::Error {
                 break;
             }
             // todo: can we avoid clone() here?
@@ -81,12 +151,12 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn expression(&self) {
+    fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment);
     }
 
     fn consume(&mut self, token_type: TokenType, msg: &str) {
-        if self.parser.current.r#type == token_type {
+        if self.parser.current.token_type == token_type {
             self.advance();
             return;
         }
@@ -150,7 +220,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn unary(&mut self) {
-        let operator_type = self.parser.previous.r#type.clone();
+        let operator_type = self.parser.previous.token_type.clone();
 
         // Compile the operand
         self.parse_precedence(Precedence::Unary);
@@ -162,7 +232,45 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn parse_precedence(&self, precedence: Precedence) {}
+    fn binary(&mut self) {
+        let operator_type = self.parser.previous.token_type.clone();
+        let rule = ParseRule::get_rule(operator_type.clone());
+        self.parse_precedence(rule.precedence.next());
+
+        match operator_type {
+            TokenType::Plus => self.emit_byte(OpCode::Add),
+            TokenType::Minus => self.emit_byte(OpCode::Substract),
+            TokenType::Star => self.emit_byte(OpCode::Multiply),
+            TokenType::Slash => self.emit_byte(OpCode::Divide),
+            _ => panic!("Unreachable!"),
+        }
+    }
+
+    fn parse_precedence(&mut self, precedence: Precedence) {
+        // Read the next token and look up the corresponding ParseRule
+        self.advance();
+        let previous_token_type = self.parser.previous.token_type.clone();
+
+        // Look up a prefix parser for the current token, the first token is always going to belong
+        // to some kind of prefix expression
+        // If there is no prefix parser, then the token must be a syntax error
+        let Some(prefix_rule) = ParseRule::get_rule(previous_token_type).prefix else {
+           self.error("Expect expression.");
+           return;
+        };
+
+        prefix_rule(self);
+
+        while precedence <= ParseRule::get_rule(self.parser.current.token_type.clone()).precedence {
+            self.advance();
+            // Look up for an infix parser for the next token
+            if let Some(infix_rule) =
+                ParseRule::get_rule(self.parser.previous.token_type.clone()).infix
+            {
+                infix_rule(self);
+            }
+        }
+    }
 
     pub fn compile(&mut self, source: &str) -> InterpretResult {
         self.scanner.init_scanner(source);

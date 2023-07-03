@@ -1,4 +1,4 @@
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Hash, Eq, Clone, Debug, PartialEq, Default)]
 pub enum TokenType {
     // Single-character tokens
     LeftParen,
@@ -48,7 +48,7 @@ pub enum TokenType {
 
 #[derive(Debug, Default)]
 pub struct Token {
-    pub r#type: TokenType,
+    pub token_type: TokenType,
     pub lexeme: String,
     pub line: usize,
 }
@@ -75,17 +75,17 @@ impl Scanner {
         self.source = source.chars().collect();
     }
 
-    fn make_token(&self, token: TokenType) -> Token {
+    fn make_token(&self, token_type: TokenType) -> Token {
         Token {
-            r#type: token,
             lexeme: self.source[self.start..self.current].iter().collect(),
             line: self.line,
+            token_type,
         }
     }
 
     fn error_token(&self, msg: &str) -> Token {
         Token {
-            r#type: TokenType::Error,
+            token_type: TokenType::Error,
             lexeme: msg.to_string(),
             line: self.line,
         }
