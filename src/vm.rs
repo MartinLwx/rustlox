@@ -50,14 +50,38 @@ impl VM {
         self.chunk.constants.values[constant_idx as usize]
     }
 
-    fn binary_operator<F>(&mut self, op: F)
-    where
-        F: Fn(Value, Value) -> Value,
-    {
-        // use Fn s.t. we can pass either a closure or a function pointer(fn)
-        let val2 = self.stack.pop().unwrap();
-        let val1 = self.stack.pop().unwrap();
-        self.stack.push(op(val1, val2))
+    fn binary_operator(&mut self, op: char) -> InterpretResult {
+        if let (Value::Number(a), Value::Number(b)) = (
+            self.stack[self.stack.len() - 2],
+            self.stack[self.stack.len() - 1],
+        ) {
+            self.stack.pop();
+            self.stack.pop();
+            let val = match op {
+                '+' => Value::Number(a + b),
+                '-' => Value::Number(a - b),
+                '*' => Value::Number(a * b),
+                '/' => Value::Number(a / b),
+                _ => panic!("Impossible"),
+            };
+            self.stack.push(val);
+            InterpretResult::Ok
+        } else {
+            self.runtime_error("Operands must be numbers.");
+            InterpretResult::RuntimeError
+        }
+    }
+
+    fn reset_stack(&mut self) {
+        self.stack.clear();
+    }
+
+    fn runtime_error(&mut self, msg: &str) {
+        // The VM advances past each instruction before executing it
+        eprintln!("{msg}");
+        let line = self.chunk.lines[self.ip - 1];
+        eprintln!("[line {line}] in script");
+        self.reset_stack()
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -86,13 +110,28 @@ impl VM {
                 }
                 OpCode::Negate => {
                     if let Some(v) = self.stack.pop() {
-                        self.stack.push(-v);
+                        if let Value::Number(v) = v {
+                            self.stack.push(Value::Number(-v));
+                        } else {
+                            self.stack.push(v); // todo: shoule we cancel the previous pop
+                                                // operation?
+                            self.runtime_error("Operand must be a number.");
+                            return InterpretResult::RuntimeError;
+                        }
                     }
                 }
-                OpCode::Add => self.binary_operator(|x, y| x + y),
-                OpCode::Substract => self.binary_operator(|x, y| x - y),
-                OpCode::Multiply => self.binary_operator(|x, y| x * y),
-                OpCode::Divide => self.binary_operator(|x, y| x / y),
+                OpCode::Add => {
+                    self.binary_operator('+');
+                }
+                OpCode::Substract => {
+                    self.binary_operator('-');
+                }
+                OpCode::Multiply => {
+                    self.binary_operator('*');
+                }
+                OpCode::Divide => {
+                    self.binary_operator('/');
+                }
             }
         }
     }

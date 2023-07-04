@@ -148,7 +148,7 @@ impl<'a> Compiler<'a> {
         loop {
             self.parser.current = self.scanner.scan_token();
             // println!("prev:    {:?}", self.parser.previous);
-            println!("current: {:?}", self.parser.current);
+            // println!("current: {:?}", self.parser.current);
             if self.parser.current.token_type != TokenType::Error {
                 break;
             }
@@ -223,7 +223,7 @@ impl<'a> Compiler<'a> {
 
     fn number(&mut self) {
         let value: f64 = self.parser.previous.lexeme.parse().unwrap();
-        self.emit_constant(value);
+        self.emit_constant(Value::Number(value));
     }
 
     fn grouping(&mut self) {
