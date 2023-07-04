@@ -122,7 +122,7 @@ impl Scanner {
 
     fn peek_next(&self) -> Option<char> {
         // todo: is this correct?
-        if self.is_at_end() {
+        if self.current + 1 >= self.source.len() {
             None
         } else {
             Some(self.source[self.current + 1])
@@ -143,6 +143,7 @@ impl Scanner {
                             self.advance();
                         }
                     }
+                    return;
                 }
                 ' ' | '\r' | '\t' => {
                     self.advance();
@@ -261,7 +262,7 @@ impl Scanner {
             ',' => self.make_token(TokenType::Comma),
             '.' => self.make_token(TokenType::Dot),
             '-' => self.make_token(TokenType::Minus),
-            '+' => self.make_token(TokenType::And),
+            '+' => self.make_token(TokenType::Plus),
             '/' => self.make_token(TokenType::Slash),
             '*' => self.make_token(TokenType::Star),
             '!' if self.my_match('=') => self.make_token(TokenType::BangEqual),

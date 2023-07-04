@@ -1,4 +1,5 @@
 use crate::chunk::{Chunk, OpCode};
+use crate::disassembler::disassemble_chunk;
 use crate::scanner::{Scanner, Token, TokenType};
 use crate::value::Value;
 use crate::vm::InterpretResult;
@@ -141,8 +142,13 @@ impl<'a> Compiler<'a> {
 
     fn advance(&mut self) {
         self.parser.previous = std::mem::take(&mut self.parser.current);
+
+        // Keep looping, reading tokens and reporting the errors, until we hit a non-error one or
+        // reach the end
         loop {
             self.parser.current = self.scanner.scan_token();
+            // println!("prev:    {:?}", self.parser.previous);
+            println!("current: {:?}", self.parser.current);
             if self.parser.current.token_type != TokenType::Error {
                 break;
             }
@@ -196,6 +202,13 @@ impl<'a> Compiler<'a> {
 
     fn end_compiler(&mut self) {
         self.emit_return();
+
+        #[cfg(debug_assertions)]
+        {
+            if !self.parser.had_error {
+                disassemble_chunk(self.current_chunk(), "code");
+            }
+        }
     }
 
     /// Try to add the value to constants, return 0 if we got too many constants
@@ -264,9 +277,12 @@ impl<'a> Compiler<'a> {
         while precedence <= ParseRule::get_rule(self.parser.current.token_type.clone()).precedence {
             self.advance();
             // Look up for an infix parser for the next token
+            // If we find one, it means the prefix expression we already compiled might be an
+            // operand for it
             if let Some(infix_rule) =
                 ParseRule::get_rule(self.parser.previous.token_type.clone()).infix
             {
+                // Usually, it will consume the right operand
                 infix_rule(self);
             }
         }

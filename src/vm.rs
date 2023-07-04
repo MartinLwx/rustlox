@@ -34,6 +34,7 @@ impl VM {
         let mut compiler = Compiler::new(&mut chunk);
         compiler.compile(source);
         self.chunk = chunk;
+        self.ip = 0;
         self.run()
     }
 
