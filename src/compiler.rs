@@ -88,6 +88,29 @@ impl<'a> ParseRule<'a> {
                 infix: None,
                 precedence: Precedence::Factor,
             },
+            TokenType::Nil | TokenType::True | TokenType::False => ParseRule {
+                prefix: Some(Compiler::literal),
+                infix: None,
+                precedence: Precedence::None,
+            },
+            TokenType::Bang => ParseRule {
+                prefix: Some(Compiler::unary),
+                infix: None,
+                precedence: Precedence::None,
+            },
+            TokenType::BangEqual | TokenType::EqualEqual => ParseRule {
+                prefix: None,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::Equality,
+            },
+            TokenType::Greater
+            | TokenType::GreaterEqual
+            | TokenType::Less
+            | TokenType::LessEqual => ParseRule {
+                prefix: None,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::Comparison,
+            },
             _ => ParseRule {
                 prefix: None,
                 infix: None,
@@ -240,6 +263,7 @@ impl<'a> Compiler<'a> {
 
         // Emit the operator instruction
         match operator_type {
+            TokenType::Bang => self.emit_byte(OpCode::Not),
             TokenType::Minus => self.emit_byte(OpCode::Negate),
             _ => panic!("Unreachable!"),
         }
@@ -255,6 +279,22 @@ impl<'a> Compiler<'a> {
             TokenType::Minus => self.emit_byte(OpCode::Substract),
             TokenType::Star => self.emit_byte(OpCode::Multiply),
             TokenType::Slash => self.emit_byte(OpCode::Divide),
+            TokenType::BangEqual => self.emit_bytes(OpCode::Equal, OpCode::Not),
+            TokenType::EqualEqual => self.emit_byte(OpCode::Equal),
+            TokenType::Greater => self.emit_byte(OpCode::Greater),
+            TokenType::GreaterEqual => self.emit_bytes(OpCode::Less, OpCode::Not),
+            TokenType::Less => self.emit_byte(OpCode::Less),
+            TokenType::LessEqual => self.emit_bytes(OpCode::Greater, OpCode::Not),
+            _ => panic!("Unreachable!"),
+        }
+    }
+
+    fn literal(&mut self) {
+        // the parse_precedence function has already consumed the keyword token
+        match self.parser.previous.token_type {
+            TokenType::True => self.emit_byte(OpCode::True),
+            TokenType::False => self.emit_byte(OpCode::False),
+            TokenType::Nil => self.emit_byte(OpCode::Nil),
             _ => panic!("Unreachable!"),
         }
     }

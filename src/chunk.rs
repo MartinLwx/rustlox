@@ -14,6 +14,14 @@ pub enum OpCode {
     Substract,
     Multiply,
     Divide,
+    Nil,
+    True,
+    False,
+    Not,
+    // Equality and comparison operators
+    Equal,
+    Greater,
+    Less,
 }
 
 impl From<OpCode> for u8 {
@@ -32,6 +40,13 @@ impl From<u8> for OpCode {
             4 => Self::Substract,
             5 => Self::Multiply,
             6 => Self::Divide,
+            7 => Self::Nil,
+            8 => Self::True,
+            9 => Self::False,
+            10 => Self::Not,
+            11 => Self::Equal,
+            12 => Self::Greater,
+            13 => Self::Less,
             _ => unimplemented!("May be later"),
         }
     }

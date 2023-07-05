@@ -8,9 +8,9 @@ pub enum Value {
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Number(v) => write!(f, "{}", v),
-            Self::Bool(v) => write!(f, "{}", v),
-            Self::Nil => write!(f, "Nil"),
+            Self::Number(v) => write!(f, "{v}"),
+            Self::Bool(v) => write!(f, "{v}"),
+            Self::Nil => write!(f, "nil"),
         }
     }
 }

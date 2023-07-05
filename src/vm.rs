@@ -62,6 +62,8 @@ impl VM {
                 '-' => Value::Number(a - b),
                 '*' => Value::Number(a * b),
                 '/' => Value::Number(a / b),
+                '>' => Value::Bool(a > b),
+                '<' => Value::Bool(a < b),
                 _ => panic!("Impossible"),
             };
             self.stack.push(val);
@@ -82,6 +84,23 @@ impl VM {
         let line = self.chunk.lines[self.ip - 1];
         eprintln!("[line {line}] in script");
         self.reset_stack()
+    }
+
+    /// Only `Nil` and `false` is falsey, everything else is `true`
+    fn is_falsey(&self, value: &Value) -> bool {
+        matches!(value, Value::Nil | Value::Bool(false))
+    }
+
+    fn values_equal(&self, a: &Value, b: &Value) -> bool {
+        // if std::mem::discriminant(a) != std::mem::discriminant(b) {
+        //     return false;
+        // }
+        match (a, b) {
+            (Value::Bool(x), Value::Bool(y)) => x == y,
+            (Value::Nil, _) => true,
+            (Value::Number(x), Value::Number(y)) => x == y,
+            _ => false,
+        }
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -131,6 +150,25 @@ impl VM {
                 }
                 OpCode::Divide => {
                     self.binary_operator('/');
+                }
+                OpCode::Nil => self.stack.push(Value::Nil),
+                OpCode::True => self.stack.push(Value::Bool(true)),
+                OpCode::False => self.stack.push(Value::Bool(false)),
+                OpCode::Not => {
+                    if let Some(operand) = self.stack.pop() {
+                        self.stack.push(Value::Bool(self.is_falsey(&operand)));
+                    }
+                }
+                OpCode::Equal => {
+                    if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
+                        self.stack.push(Value::Bool(self.values_equal(&a, &b)));
+                    }
+                }
+                OpCode::Greater => {
+                    self.binary_operator('>');
+                }
+                OpCode::Less => {
+                    self.binary_operator('<');
                 }
             }
         }
