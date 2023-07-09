@@ -2,6 +2,7 @@ use crate::chunk::{Chunk, OpCode};
 use crate::compiler::Compiler;
 use crate::disassembler::disassemble_instruction;
 use crate::value::Value;
+use std::collections::HashMap;
 
 pub enum InterpretResult {
     Ok,
@@ -17,6 +18,8 @@ pub struct VM {
     pub ip: usize,
 
     pub stack: Vec<Value>,
+
+    globals: HashMap<String, Value>,
 }
 
 impl VM {
@@ -25,6 +28,7 @@ impl VM {
             chunk: Chunk::new(),
             ip: 0,
             stack: vec![],
+            globals: HashMap::new(),
         }
     }
 
@@ -98,13 +102,11 @@ impl VM {
     }
 
     fn values_equal(&self, a: &Value, b: &Value) -> bool {
-        // if std::mem::discriminant(a) != std::mem::discriminant(b) {
-        //     return false;
-        // }
         match (a, b) {
             (Value::Bool(x), Value::Bool(y)) => x == y,
             (Value::Nil, _) => true,
             (Value::Number(x), Value::Number(y)) => x == y,
+            (Value::String(s1), Value::String(s2)) => s1 == s2,
             _ => false,
         }
     }
@@ -182,6 +184,15 @@ impl VM {
                 }
                 OpCode::Pop => {
                     self.stack.pop().unwrap();
+                }
+                OpCode::DefineGlobal => {
+                    // Get the name of the variable from the constant table
+                    let name = self.read_constant();
+
+                    if let Value::String(s) = name {
+                        let val = self.stack.pop().unwrap();
+                        self.globals.insert(s, val);
+                    }
                 }
             }
         }

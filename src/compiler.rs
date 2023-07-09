@@ -359,7 +359,7 @@ impl<'a> Compiler<'a> {
 
     fn print_statement(&mut self) {
         self.expression();
-        self.consume(TokenType::Semicolon, "Expect ';' after expression.");
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
         self.emit_byte(OpCode::Print);
     }
 
@@ -380,10 +380,54 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn identifier_constant(&mut self, name: Token) -> u8 {
+        self.make_constant(Value::String(name.lexeme))
+    }
+
+    /// Consume the next token, which must be an identifier
+    fn parse_variable(&mut self, error_msg: &str) -> u8 {
+        self.consume(TokenType::Identifier, error_msg);
+
+        let previous_token = std::mem::take(&mut self.parser.previous);
+
+        self.identifier_constant(previous_token)
+    }
+
+    fn define_variable(&mut self, global: u8) {
+        self.emit_bytes(OpCode::DefineGlobal, global);
+    }
+
+    fn var_declaration(&mut self) {
+        let global = self.parse_variable("Expect variable name.");
+
+        // look for an initializer expresssion
+        if self.my_match(TokenType::Equal) {
+            self.expression();
+        } else {
+            // if the user doesn't initialize the variable, the compiler implicitly initialize it
+            // it nil
+            // e.g.           var a;
+            // is equal to    var a = nil;
+            self.emit_byte(OpCode::Nil);
+        }
+
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        );
+
+        self.define_variable(global);
+    }
+
     fn declaration(&mut self) {
         // declaration  -> varDecl
         //              |  statement ;
-        self.statement();
+        if self.my_match(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.statement();
+        }
+
         if self.parser.panic_mode {
             self.synchronize();
         }

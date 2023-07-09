@@ -24,6 +24,7 @@ pub enum OpCode {
     Less,
     Print,
     Pop,
+    DefineGlobal,
 }
 
 impl From<OpCode> for u8 {
@@ -51,6 +52,7 @@ impl From<u8> for OpCode {
             13 => Self::Less,
             14 => Self::Print,
             15 => Self::Pop,
+            16 => Self::DefineGlobal,
             _ => unimplemented!("May be later"),
         }
     }
