@@ -126,7 +126,6 @@ impl VM {
             let instruction = self.read_byte();
             match instruction {
                 OpCode::Return => {
-                    println!("{}", self.stack.last().expect("Empty stack in VM"));
                     return InterpretResult::Ok;
                 }
                 OpCode::Constant => {
@@ -175,6 +174,14 @@ impl VM {
                 }
                 OpCode::Less => {
                     self.binary_operator('<');
+                }
+                OpCode::Print => {
+                    // When the VM reaches this instruction, it has already executed the code for
+                    // the expression, leaving the result value on top of the stack
+                    println!("{}", self.stack.pop().unwrap());
+                }
+                OpCode::Pop => {
+                    self.stack.pop().unwrap();
                 }
             }
         }

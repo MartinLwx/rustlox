@@ -341,11 +341,85 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    /// Return `true` if the current token has the given token type
+    fn check(&self, expected: TokenType) -> bool {
+        self.parser.current.token_type == expected
+    }
+
+    /// Consume the current token and return `true` if it hash the given token type, otherwise
+    /// return `false`
+    fn my_match(&mut self, expected: TokenType) -> bool {
+        if !self.check(expected) {
+            false
+        } else {
+            self.advance();
+            true
+        }
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.");
+        self.emit_byte(OpCode::Print);
+    }
+
+    /// A expression followed by a semicolon
+    fn expression_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.");
+        self.emit_byte(OpCode::Pop);
+    }
+
+    fn statement(&mut self) {
+        // statement    -> exprStmt
+        //              |  printStmt ;
+        if self.my_match(TokenType::Print) {
+            self.print_statement();
+        } else {
+            self.expression_statement();
+        }
+    }
+
+    fn declaration(&mut self) {
+        // declaration  -> varDecl
+        //              |  statement ;
+        self.statement();
+        if self.parser.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    /// Keep skiping tokens until we reach something that looks like a statement boundary
+    fn synchronize(&mut self) {
+        self.parser.panic_mode = false;
+
+        while self.parser.current.token_type != TokenType::Eof {
+            if self.parser.previous.token_type == TokenType::Semicolon {
+                return;
+            }
+            match self.parser.current.token_type {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => {
+                    return;
+                }
+                _ => {} // do nothing
+            }
+            self.advance();
+        }
+    }
+
     pub fn compile(&mut self, source: &str) -> InterpretResult {
         self.scanner.init_scanner(source);
         self.advance();
-        self.expression();
-        self.consume(TokenType::Eof, "Expect end of expression.");
+        while !self.my_match(TokenType::Eof) {
+            self.declaration();
+        }
         self.end_compiler();
         if self.parser.had_error {
             InterpretResult::CompileError
