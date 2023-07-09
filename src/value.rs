@@ -1,8 +1,10 @@
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Bool(bool),
     Nil,
     Number(f64),
+    /// A pointer to a String in the heap
+    String(String),
 }
 
 impl std::fmt::Display for Value {
@@ -11,6 +13,7 @@ impl std::fmt::Display for Value {
             Self::Number(v) => write!(f, "{v}"),
             Self::Bool(v) => write!(f, "{v}"),
             Self::Nil => write!(f, "nil"),
+            Self::String(s) => write!(f, "{s}"),
         }
     }
 }

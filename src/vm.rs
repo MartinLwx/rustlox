@@ -47,29 +47,35 @@ impl VM {
     fn read_constant(&mut self) -> Value {
         let constant_idx = self.chunk.code[self.ip];
         self.ip += 1;
-        self.chunk.constants.values[constant_idx as usize]
+        self.chunk.constants.values[constant_idx as usize].clone()
     }
 
     fn binary_operator(&mut self, op: char) -> InterpretResult {
-        if let (Value::Number(a), Value::Number(b)) = (
-            self.stack[self.stack.len() - 2],
-            self.stack[self.stack.len() - 1],
-        ) {
-            self.stack.pop();
-            self.stack.pop();
-            let val = match op {
-                '+' => Value::Number(a + b),
-                '-' => Value::Number(a - b),
-                '*' => Value::Number(a * b),
-                '/' => Value::Number(a / b),
-                '>' => Value::Bool(a > b),
-                '<' => Value::Bool(a < b),
-                _ => panic!("Impossible"),
-            };
-            self.stack.push(val);
-            InterpretResult::Ok
+        if let (Some(b), Some(a)) = (self.stack.pop(), self.stack.pop()) {
+            match (a, b) {
+                (Value::Number(a), Value::Number(b)) => {
+                    let val = match op {
+                        '+' => Value::Number(a + b),
+                        '-' => Value::Number(a - b),
+                        '*' => Value::Number(a * b),
+                        '/' => Value::Number(a / b),
+                        '>' => Value::Bool(a > b),
+                        '<' => Value::Bool(a < b),
+                        _ => panic!("Impossible"),
+                    };
+                    self.stack.push(val);
+                    InterpretResult::Ok
+                }
+                (Value::String(a), Value::String(b)) => {
+                    self.stack.push(Value::String(format!("{a}{b}")));
+                    InterpretResult::Ok
+                }
+                _ => {
+                    self.runtime_error("Operands must be numbers.");
+                    InterpretResult::RuntimeError
+                }
+            }
         } else {
-            self.runtime_error("Operands must be numbers.");
             InterpretResult::RuntimeError
         }
     }

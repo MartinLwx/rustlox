@@ -111,6 +111,11 @@ impl<'a> ParseRule<'a> {
                 infix: Some(Compiler::binary),
                 precedence: Precedence::Comparison,
             },
+            TokenType::STRING => ParseRule {
+                prefix: Some(Compiler::string),
+                infix: None,
+                precedence: Precedence::None,
+            },
             _ => ParseRule {
                 prefix: None,
                 infix: None,
@@ -247,6 +252,14 @@ impl<'a> Compiler<'a> {
     fn number(&mut self) {
         let value: f64 = self.parser.previous.lexeme.parse().unwrap();
         self.emit_constant(Value::Number(value));
+    }
+
+    fn string(&mut self) {
+        let end = self.parser.previous.lexeme.len() - 2;
+        // todo: or create a objects field for the Chunk struct
+        self.emit_constant(Value::String(
+            self.parser.previous.lexeme[1..=end].to_string(),
+        ));
     }
 
     fn grouping(&mut self) {
