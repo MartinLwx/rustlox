@@ -2,6 +2,7 @@ use crate::chunk::{Chunk, OpCode};
 use crate::compiler::Compiler;
 use crate::disassembler::disassemble_instruction;
 use crate::value::Value;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 pub enum InterpretResult {
@@ -201,6 +202,22 @@ impl VM {
                     if let Value::String(s) = name {
                         if self.globals.contains_key(&s) {
                             self.stack.push(self.globals.get(&s).unwrap().clone());
+                        } else {
+                            self.runtime_error(&format!("Undefined variable '{s}'"));
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                }
+                OpCode::SetGlobal => {
+                    let name = self.read_constant();
+
+                    if let Value::String(s) = name {
+                        // todo: avoid copy or look up the hashmap twice?
+                        if let Entry::Occupied(mut e) = self.globals.entry(s.clone()) {
+                            // Assignment is an expression, so it needs to leave that value there
+                            // incase the assignment is nested inside some larger expression
+                            let val = self.stack.last().unwrap().clone();
+                            e.insert(val);
                         } else {
                             self.runtime_error(&format!("Undefined variable '{s}'"));
                             return InterpretResult::RuntimeError;

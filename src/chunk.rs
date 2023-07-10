@@ -26,6 +26,7 @@ pub enum OpCode {
     Pop,
     DefineGlobal,
     GetGlobal,
+    SetGlobal,
 }
 
 impl From<OpCode> for u8 {
@@ -55,6 +56,7 @@ impl From<u8> for OpCode {
             15 => Self::Pop,
             16 => Self::DefineGlobal,
             17 => Self::GetGlobal,
+            18 => Self::SetGlobal,
             _ => unimplemented!("May be later"),
         }
     }

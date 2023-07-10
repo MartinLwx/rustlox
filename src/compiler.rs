@@ -46,7 +46,7 @@ impl Precedence {
 }
 
 /// A function type that takes no arguments and returns nothing
-type ParseFn<'a> = fn(&mut Compiler<'a>) -> (); // function pointer
+type ParseFn<'a> = fn(&mut Compiler<'a>, bool) -> (); // function pointer
 
 /// The three properties which represents a single row in the Pratt parser table
 struct ParseRule<'a> {
@@ -254,12 +254,12 @@ impl<'a> Compiler<'a> {
         constant_idx
     }
 
-    fn number(&mut self) {
+    fn number(&mut self, _can_assign: bool) {
         let value: f64 = self.parser.previous.lexeme.parse().unwrap();
         self.emit_constant(Value::Number(value));
     }
 
-    fn string(&mut self) {
+    fn string(&mut self, _can_assign: bool) {
         let end = self.parser.previous.lexeme.len() - 2;
         // todo: or create a objects field for the Chunk struct
         self.emit_constant(Value::String(
@@ -267,13 +267,13 @@ impl<'a> Compiler<'a> {
         ));
     }
 
-    fn grouping(&mut self) {
+    fn grouping(&mut self, _can_assign: bool) {
         // Assumption: the initial '(' has already been consumed
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
     }
 
-    fn unary(&mut self) {
+    fn unary(&mut self, _can_assign: bool) {
         let operator_type = self.parser.previous.token_type.clone();
 
         // Compile the operand
@@ -287,7 +287,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn binary(&mut self) {
+    fn binary(&mut self, _can_assign: bool) {
         let operator_type = self.parser.previous.token_type.clone();
         let rule = ParseRule::get_rule(operator_type.clone());
         self.parse_precedence(rule.precedence.next());
@@ -307,7 +307,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn literal(&mut self) {
+    fn literal(&mut self, _can_assign: bool) {
         // the parse_precedence function has already consumed the keyword token
         match self.parser.previous.token_type {
             TokenType::True => self.emit_byte(OpCode::True),
@@ -330,7 +330,8 @@ impl<'a> Compiler<'a> {
            return;
         };
 
-        prefix_rule(self);
+        let can_assign = precedence <= Precedence::Assignment;
+        prefix_rule(self, can_assign);
 
         while precedence <= ParseRule::get_rule(self.parser.current.token_type.clone()).precedence {
             self.advance();
@@ -341,8 +342,12 @@ impl<'a> Compiler<'a> {
                 ParseRule::get_rule(self.parser.previous.token_type.clone()).infix
             {
                 // Usually, it will consume the right operand
-                infix_rule(self);
+                infix_rule(self, can_assign);
             }
+        }
+
+        if can_assign && self.my_match(TokenType::Equal) {
+            self.error("Invalid assignment target.")
         }
     }
 
@@ -438,14 +443,22 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn named_variable(&mut self, token: Token) {
+    fn named_variable(&mut self, token: Token, can_assign: bool) {
         let arg = self.identifier_constant(token);
-        self.emit_bytes(OpCode::GetGlobal, arg);
+
+        if can_assign && self.my_match(TokenType::Equal) {
+            // This is an assignment (setter)
+            // e.g. var foo = "bar";
+            self.expression();
+            self.emit_bytes(OpCode::SetGlobal, arg);
+        } else {
+            self.emit_bytes(OpCode::GetGlobal, arg);
+        }
     }
 
-    fn variable(&mut self) {
+    fn variable(&mut self, can_assign: bool) {
         let previous_token = std::mem::take(&mut self.parser.previous);
-        self.named_variable(previous_token);
+        self.named_variable(previous_token, can_assign);
     }
 
     /// Keep skiping tokens until we reach something that looks like a statement boundary
