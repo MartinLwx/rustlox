@@ -26,7 +26,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::Add => simple_instruction("OP_ADD", offset),
         OpCode::Substract => simple_instruction("OP_SUBSTRACT", offset),
         OpCode::Multiply => simple_instruction("OP_MULTIPLY", offset),
-        OpCode::Divide => simple_instruction("OP_DEVIDE", offset),
+        OpCode::Divide => simple_instruction("OP_DIVIDE", offset),
         OpCode::Nil => simple_instruction("OP_NIL", offset),
         OpCode::True => simple_instruction("OP_TRUE", offset),
         OpCode::False => simple_instruction("OP_FALE", offset),
@@ -37,6 +37,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::Print => simple_instruction("OP_PRINT", offset),
         OpCode::Pop => simple_instruction("OP_POP", offset),
         OpCode::DefineGlobal => constant_instruction("OP_DEFINE_GLOBAL", chunk, offset),
+        OpCode::GetGlobal => constant_instruction("OP_GET_GLOBAL", chunk, offset),
     }
 }
 

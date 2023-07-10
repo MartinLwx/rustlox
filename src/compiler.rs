@@ -116,6 +116,11 @@ impl<'a> ParseRule<'a> {
                 infix: None,
                 precedence: Precedence::None,
             },
+            TokenType::Identifier => ParseRule {
+                prefix: Some(Compiler::variable),
+                infix: None,
+                precedence: Precedence::None,
+            },
             _ => ParseRule {
                 prefix: None,
                 infix: None,
@@ -431,6 +436,16 @@ impl<'a> Compiler<'a> {
         if self.parser.panic_mode {
             self.synchronize();
         }
+    }
+
+    fn named_variable(&mut self, token: Token) {
+        let arg = self.identifier_constant(token);
+        self.emit_bytes(OpCode::GetGlobal, arg);
+    }
+
+    fn variable(&mut self) {
+        let previous_token = std::mem::take(&mut self.parser.previous);
+        self.named_variable(previous_token);
     }
 
     /// Keep skiping tokens until we reach something that looks like a statement boundary

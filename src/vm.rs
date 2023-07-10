@@ -48,6 +48,7 @@ impl VM {
         self.chunk.code[self.ip - 1].into()
     }
 
+    /// For a two bytes byte code: `[Opcode, the index of value]`, return the corresponding value
     fn read_constant(&mut self) -> Value {
         let constant_idx = self.chunk.code[self.ip];
         self.ip += 1;
@@ -192,6 +193,18 @@ impl VM {
                     if let Value::String(s) = name {
                         let val = self.stack.pop().unwrap();
                         self.globals.insert(s, val);
+                    }
+                }
+                OpCode::GetGlobal => {
+                    let name = self.read_constant();
+
+                    if let Value::String(s) = name {
+                        if self.globals.contains_key(&s) {
+                            self.stack.push(self.globals.get(&s).unwrap().clone());
+                        } else {
+                            self.runtime_error(&format!("Undefined variable '{s}'"));
+                            return InterpretResult::RuntimeError;
+                        }
                     }
                 }
             }
