@@ -138,6 +138,12 @@ struct Local {
     depth: usize,
 }
 
+impl Local {
+    pub fn new(name: Token, depth: usize) -> Self {
+        Self { name, depth }
+    }
+}
+
 pub struct Compiler<'a> {
     scanner: Scanner,
     parser: Parser,
@@ -254,16 +260,6 @@ impl<'a> Compiler<'a> {
                 disassemble_chunk(self.current_chunk(), "code");
             }
         }
-    }
-
-    /// Try to add the value to constants, return 0 if we got too many constants
-    fn make_constant(&mut self, value: Value) -> u8 {
-        let Ok(constant_idx) = self.current_chunk().add_constant(value).try_into() else {
-            self.error("Too many constants in one chunk.");
-            // todo: or return a Result<T, E>?
-            return 0;
-        };
-        constant_idx
     }
 
     fn number(&mut self, _can_assign: bool) {
@@ -400,8 +396,10 @@ impl<'a> Compiler<'a> {
     /// To "leave" a scope, we just need to decrease the current depth
     fn end_scope(&mut self) {
         self.scope_depth -= 1;
+        while self.locals.pop().is_some() {
+            self.emit_byte(OpCode::Pop);
+        }
     }
-
 
     /// Keep parsing declarations and statements until it hits the closing brace. It will also
     /// check for the end of the token stream
@@ -427,21 +425,77 @@ impl<'a> Compiler<'a> {
             self.expression_statement();
         }
     }
+    /// Try to add the value to constants, return 0 if we got too many constants
+    fn make_constant(&mut self, value: Value) -> u8 {
+        let Ok(constant_idx) = self.current_chunk().add_constant(value).try_into() else {
+            self.error("Too many constants in one chunk.");
+            // todo: or return a Result<T, E>?
+            return 0;
+        };
+        constant_idx
+    }
 
     fn identifier_constant(&mut self, name: Token) -> u8 {
         self.make_constant(Value::String(name.lexeme))
     }
 
-    /// Consume the next token, which must be an identifier
+    /// Consume the next token, which must be an identifier. Add its lexeme to the chunks's
+    /// constants table as a string, and then returns the constant table index where it was added
     fn parse_variable(&mut self, error_msg: &str) -> u8 {
         self.consume(TokenType::Identifier, error_msg);
 
-        let previous_token = std::mem::take(&mut self.parser.previous);
+        self.declare_variable();
+        // Exit the function  and return a dummy index if we're in a local scope
+        // , because we don't need to store the variable's name into the sontant table.
+        if self.scope_depth > 0 {
+            return 0;
+        }
 
+        let previous_token = std::mem::take(&mut self.parser.previous);
         self.identifier_constant(previous_token)
     }
 
+    /// Add the local variable to the compilers's list of variables
+    fn add_local(&mut self, token: Token) {
+        if self.locals.len() == std::u8::MAX as usize {
+            self.error("Too many local variables in function.");
+            return;
+        }
+        self.locals.push(Local::new(token, self.scope_depth));
+    }
+
+    fn declare_variable(&mut self) {
+        // Exit if we are in global scope
+        if self.scope_depth == 0 {
+            return;
+        }
+        // Prevent redeclaring a variable with the same name as previous declaration
+        let name = std::mem::take(&mut self.parser.previous);
+        let mut same_name_in_same_scope = false;
+        for token in self.locals.iter().rev() {
+            // It's only an error to have 2 variables with the same name in the same local scope,
+            // which means they must have the sanme scope_depth
+            if token.depth < self.scope_depth {
+                break;
+            }
+            if token.name.lexeme == name.lexeme {
+                same_name_in_same_scope = true;
+                break;
+            }
+        }
+        if same_name_in_same_scope {
+            self.error("Already a variable with this name in this scope.");
+        }
+
+        self.add_local(name);
+    }
+
+    /// Emit the bytecode for storing the variable's value in the global variable hashtable
+    /// Emit the bytecode to store a local variable if we're in a local scope(just return)
     fn define_variable(&mut self, global: u8) {
+        if self.scope_depth > 0 {
+            return;
+        }
         self.emit_bytes(OpCode::DefineGlobal, global);
     }
 
