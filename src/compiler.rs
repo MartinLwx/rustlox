@@ -130,11 +130,21 @@ impl<'a> ParseRule<'a> {
     }
 }
 
+/// A local variable in the stack
+#[derive(Debug, Default)]
+struct Local {
+    name: Token,
+    /// the level of nesting where this local variable was declared
+    depth: usize,
+}
+
 pub struct Compiler<'a> {
     scanner: Scanner,
     parser: Parser,
     // use a reference to avoid the overhead of copy the whole chunk
     compiling_chunk: &'a mut Chunk,
+    locals: Vec<Local>,
+    scope_depth: usize,
 }
 
 impl<'a> Compiler<'a> {
@@ -143,6 +153,8 @@ impl<'a> Compiler<'a> {
             scanner: Scanner::new(),
             parser: Parser::default(),
             compiling_chunk: chunk,
+            locals: vec![],
+            scope_depth: 0,
         }
     }
 
@@ -380,11 +392,37 @@ impl<'a> Compiler<'a> {
         self.emit_byte(OpCode::Pop);
     }
 
+    /// To "create" a scope, we just need to increment the current depth
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    /// To "leave" a scope, we just need to decrease the current depth
+    fn end_scope(&mut self) {
+        self.scope_depth -= 1;
+    }
+
+
+    /// Keep parsing declarations and statements until it hits the closing brace. It will also
+    /// check for the end of the token stream
+    fn block(&mut self) {
+        // block        -> "{" declarations* "}"
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.declaration()
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block.");
+    }
+
     fn statement(&mut self) {
         // statement    -> exprStmt
-        //              |  printStmt ;
+        //              |  printStmt
+        //              |  block ;
         if self.my_match(TokenType::Print) {
             self.print_statement();
+        } else if self.my_match(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
         } else {
             self.expression_statement();
         }
