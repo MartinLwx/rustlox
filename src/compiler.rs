@@ -135,11 +135,11 @@ impl<'a> ParseRule<'a> {
 struct Local {
     name: Token,
     /// the level of nesting where this local variable was declared
-    depth: usize,
+    depth: i32,
 }
 
 impl Local {
-    pub fn new(name: Token, depth: usize) -> Self {
+    pub fn new(name: Token, depth: i32) -> Self {
         Self { name, depth }
     }
 }
@@ -150,7 +150,7 @@ pub struct Compiler<'a> {
     // use a reference to avoid the overhead of copy the whole chunk
     compiling_chunk: &'a mut Chunk,
     locals: Vec<Local>,
-    scope_depth: usize,
+    scope_depth: i32,
 }
 
 impl<'a> Compiler<'a> {
@@ -461,7 +461,8 @@ impl<'a> Compiler<'a> {
             self.error("Too many local variables in function.");
             return;
         }
-        self.locals.push(Local::new(token, self.scope_depth));
+        // -1 is a special sentinel value - this local variable is in "unitialized" state
+        self.locals.push(Local::new(token, -1));
     }
 
     fn declare_variable(&mut self) {
@@ -490,10 +491,17 @@ impl<'a> Compiler<'a> {
         self.add_local(name);
     }
 
+    fn mark_initialized(&mut self) {
+        if let Some(local) = self.locals.last_mut() {
+            local.depth = self.scope_depth;
+        }
+    }
+
     /// Emit the bytecode for storing the variable's value in the global variable hashtable
     /// Emit the bytecode to store a local variable if we're in a local scope(just return)
     fn define_variable(&mut self, global: u8) {
         if self.scope_depth > 0 {
+            self.mark_initialized();
             return;
         }
         self.emit_bytes(OpCode::DefineGlobal, global);
@@ -535,16 +543,48 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    /// Walk the list of locals that are currently in the scope, This ensures that inner local
+    /// variables correctly shadow locals with the same name in surrouding scopes
+    /// Return `None` if we can't find the `token` in `self.locals` or it is in "unitialized" state
+    fn resolve_local(&mut self, token: &Token) -> Option<u8> {
+        let mut use_uninitialized_variable = false;
+        let mut local_index = None;
+        for (idx, i) in self.locals.iter().enumerate().rev() {
+            if i.name.lexeme == token.lexeme {
+                if i.depth == -1 {
+                    use_uninitialized_variable = true;
+                } else {
+                    local_index = Some(idx as u8);
+                }
+            }
+        }
+        if use_uninitialized_variable {
+            self.error("Can't read local variable in its own initializer.");
+        }
+        local_index
+    }
+
     fn named_variable(&mut self, token: Token, can_assign: bool) {
-        let arg = self.identifier_constant(token);
+        let mut get_op = OpCode::GetLocal;
+        let mut set_op = OpCode::SetLocal;
+
+        let mut arg = 0_u8;
+        if let Some(idx) = self.resolve_local(&token) {
+            arg = idx;
+        } else {
+            arg = self.identifier_constant(token);
+            get_op = OpCode::GetGlobal;
+            set_op = OpCode::SetGlobal;
+        }
 
         if can_assign && self.my_match(TokenType::Equal) {
             // This is an assignment (setter)
             // e.g. var foo = "bar";
             self.expression();
-            self.emit_bytes(OpCode::SetGlobal, arg);
+            self.emit_bytes(set_op, arg);
         } else {
-            self.emit_bytes(OpCode::GetGlobal, arg);
+            // For access (getter)
+            self.emit_bytes(get_op, arg);
         }
     }
 

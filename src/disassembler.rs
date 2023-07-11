@@ -39,6 +39,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::DefineGlobal => constant_instruction("OP_DEFINE_GLOBAL", chunk, offset),
         OpCode::GetGlobal => constant_instruction("OP_GET_GLOBAL", chunk, offset),
         OpCode::SetGlobal => constant_instruction("OP_SET_GLOBAL", chunk, offset),
+        OpCode::GetLocal => byte_instruction("OP_GET_LOCAL", chunk, offset),
+        OpCode::SetLocal => byte_instruction("OP_SET_LOCAL", chunk, offset),
     }
 }
 
@@ -51,5 +53,12 @@ fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     let constant_idx = chunk.code[offset + 1];
     print!("{name:-16} {constant_idx:04} ");
     println!("'{:?}'", chunk.constants.values[constant_idx as usize]);
+    offset + 2
+}
+
+/// The compiler compiles local variables to direct slot access, so we just show the slot number
+fn byte_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
+    let slot = chunk.code[offset + 1];
+    println!("{name:-16} {slot:04} ");
     offset + 2
 }

@@ -43,7 +43,7 @@ impl VM {
         self.run()
     }
 
-    /// Read the current bytepointed byte `self.ip` as an instruction and then advances the `self.ip`
+    /// Read the current byte pointed by `self.ip` as an instruction and then advances the `self.ip`
     fn read_byte(&mut self) -> OpCode {
         self.ip += 1;
         self.chunk.code[self.ip - 1].into()
@@ -223,6 +223,18 @@ impl VM {
                             return InterpretResult::RuntimeError;
                         }
                     }
+                }
+                OpCode::GetLocal => {
+                    // It taks a single-byte operand for the stack slot where the local lives
+                    let index = self.read_byte();
+                    // Load the value from that index and then pushese it on top of the stack s.t.
+                    // later instruction can find it
+                    self.stack.push(self.stack[index as usize].clone());
+                }
+                OpCode::SetLocal => {
+                    // It taks a single-byte operand for the stack slot where the local lives
+                    let index = self.read_byte();
+                    self.stack[index as usize] = self.stack.last().unwrap().clone();
                 }
             }
         }
