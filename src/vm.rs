@@ -49,6 +49,15 @@ impl VM {
         self.chunk.code[self.ip - 1].into()
     }
 
+    /// Read a two bytes operand
+    fn read_short(&mut self) -> u16 {
+        self.ip += 2;
+        let last_two = self.chunk.code[self.ip - 2] as u16;
+        let last_one = self.chunk.code[self.ip - 1] as u16;
+
+        (last_two << 8) | last_one
+    }
+
     /// For a two bytes byte code: `[Opcode, the index of value]`, return the corresponding value
     fn read_constant(&mut self) -> Value {
         let constant_idx = self.chunk.code[self.ip];
@@ -235,6 +244,18 @@ impl VM {
                     // It taks a single-byte operand for the stack slot where the local lives
                     let index = self.read_byte();
                     self.stack[index as usize] = self.stack.last().unwrap().clone();
+                }
+                OpCode::JumpIfFalse => {
+                    let offset = self.read_short();
+                    if let Some(condition) = self.stack.last() {
+                        if self.is_falsey(condition) {
+                            self.ip += offset as usize;
+                        }
+                    }
+                }
+                OpCode::Jump => {
+                    let offset = self.read_short();
+                    self.ip += offset as usize;
                 }
             }
         }

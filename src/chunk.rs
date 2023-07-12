@@ -29,6 +29,9 @@ pub enum OpCode {
     SetGlobal,
     GetLocal,
     SetLocal,
+    JumpIfFalse,
+    /// Unconditional jump
+    Jump,
 }
 
 impl From<OpCode> for u8 {
@@ -61,6 +64,8 @@ impl From<u8> for OpCode {
             18 => Self::SetGlobal,
             19 => Self::GetLocal,
             20 => Self::SetLocal,
+            21 => Self::JumpIfFalse,
+            22 => Self::Jump,
             _ => unimplemented!("May be later"),
         }
     }

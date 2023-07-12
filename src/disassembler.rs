@@ -15,7 +15,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     print!("{offset:04} ");
     if offset > 0 && chunk.lines[offset] == chunk.lines[offset - 1] {
         // Show a | for any instruction that comes from the same source line as the preceding one.
-        print!("  |  ");
+        print!("   | ");
     } else {
         print!("{:4} ", chunk.lines[offset]);
     }
@@ -41,6 +41,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::SetGlobal => constant_instruction("OP_SET_GLOBAL", chunk, offset),
         OpCode::GetLocal => byte_instruction("OP_GET_LOCAL", chunk, offset),
         OpCode::SetLocal => byte_instruction("OP_SET_LOCAL", chunk, offset),
+        OpCode::Jump => jump_instruction("OP_JUMP", 1, chunk, offset),
+        OpCode::JumpIfFalse => jump_instruction("OP_JUMP_IF_ELSE", 1, chunk, offset),
     }
 }
 
@@ -53,6 +55,7 @@ fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     let constant_idx = chunk.code[offset + 1];
     print!("{name:-16} {constant_idx:04} ");
     println!("'{:?}'", chunk.constants.values[constant_idx as usize]);
+
     offset + 2
 }
 
@@ -60,5 +63,15 @@ fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
 fn byte_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     let slot = chunk.code[offset + 1];
     println!("{name:-16} {slot:04} ");
+
     offset + 2
+}
+
+fn jump_instruction(name: &str, sign: usize, chunk: &Chunk, offset: usize) -> usize {
+    // Compute the jump offset
+    let mut jump = (chunk.code[offset + 1] as usize) << 8;
+    jump |= chunk.code[offset + 2] as usize;
+    println!("{:-16} {:04} -> {}", name, offset, offset + 3 + sign * jump);
+
+    offset + 3
 }

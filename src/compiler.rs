@@ -401,6 +401,52 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    /// Emit jump instruction and placeholder(2 bytes) and return the offset of the emitted
+    /// instruction
+    fn emit_jump<T>(&mut self, instruction: T) -> usize
+    where
+        T: Into<u8>,
+    {
+        self.emit_byte(instruction);
+        // placeholder for jump offset
+        // use 2 bytes for the jump offset operand
+        self.emit_byte(std::u8::MAX);
+        self.emit_byte(std::u8::MAX);
+
+        self.current_chunk().code.len() - 2
+    }
+
+    /// Replace the operand at the given location with the calculated jump offset
+    ///
+    /// This function should be called before we emit the next instruction that we want the jump to
+    /// land on
+    fn patch_jump(&mut self, offset: usize) {
+        let jump = self.current_chunk().code.len() - offset - 2;
+        if jump > std::u16::MAX as usize {
+            self.error("Too much code to jump over.");
+        }
+        self.current_chunk().code[offset] = ((jump >> 8) as u8) & std::u8::MAX;
+        self.current_chunk().code[offset + 1] = jump as u8 & std::u8::MAX;
+    }
+
+    fn if_statement(&mut self) {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse);
+        self.emit_byte(OpCode::Pop);
+        self.statement();
+        // Jump to the next statement after the else branch
+        let else_jump = self.emit_jump(OpCode::Jump);
+        self.patch_jump(then_jump);
+        self.emit_byte(OpCode::Pop);
+        if self.my_match(TokenType::Else) {
+            self.statement();
+        }
+        self.patch_jump(else_jump);
+    }
+
     /// Keep parsing declarations and statements until it hits the closing brace. It will also
     /// check for the end of the token stream
     fn block(&mut self) {
@@ -414,9 +460,12 @@ impl<'a> Compiler<'a> {
     fn statement(&mut self) {
         // statement    -> exprStmt
         //              |  printStmt
+        //              |  ifStmt
         //              |  block ;
         if self.my_match(TokenType::Print) {
             self.print_statement();
+        } else if self.my_match(TokenType::If) {
+            self.if_statement();
         } else if self.my_match(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
