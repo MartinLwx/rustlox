@@ -442,8 +442,13 @@ impl<'a> Compiler<'a> {
     /// To "leave" a scope, we just need to decrease the current depth
     fn end_scope(&mut self) {
         self.scope_depth -= 1;
-        while self.locals.pop().is_some() {
-            self.emit_byte(OpCode::Pop);
+        while let Some(v) = self.locals.last() {
+            if v.depth > self.scope_depth {
+                self.emit_byte(OpCode::Pop);
+                self.locals.pop().unwrap();
+            } else {
+                break;
+            }
         }
     }
 
@@ -511,6 +516,54 @@ impl<'a> Compiler<'a> {
         self.emit_byte(OpCode::Pop); // pop the condition expression bool, another path
     }
 
+    fn for_statement(&mut self) {
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
+        if self.my_match(TokenType::Semicolon) {
+            // no intializer
+        } else if self.my_match(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.expression_statement();
+        }
+
+        let mut loop_start = self.current_chunk().code.len();
+        let mut exit_jump = None;
+        if !self.my_match(TokenType::Semicolon) {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after loop condition.");
+
+            // Jump out of the loop if the condition is false.
+            exit_jump = Some(self.emit_jump(OpCode::JumpIfFalse));
+            self.emit_byte(OpCode::Pop); // Pop condition
+        }
+
+        if !self.my_match(TokenType::RightParen) {
+            let bodyjump = self.emit_jump(OpCode::Jump);
+            let increment_start = self.current_chunk().code.len();
+            self.expression(); // compile the increment expression, only execute it for its side
+                               // effect
+            self.emit_byte(OpCode::Pop); // Pop condition
+                                         //
+            self.consume(TokenType::RightParen, "Expect ')' after for clauses.");
+
+            // This loop structure will take us back to the top of the for loop
+            self.emit_loop(loop_start);
+            // Later, when we emit the loop instruction after the body statement, this will cause
+            // it to jump up to the increment expression instead of the top of the for loop
+            loop_start = increment_start;
+            self.patch_jump(bodyjump);
+        }
+
+        self.statement(); // loop body
+        self.emit_loop(loop_start);
+        if let Some(v) = exit_jump {
+            self.patch_jump(v);
+            self.emit_byte(OpCode::Pop); // Pop condition
+        }
+        self.end_scope();
+    }
+
     /// Keep parsing declarations and statements until it hits the closing brace. It will also
     /// check for the end of the token stream
     fn block(&mut self) {
@@ -526,6 +579,7 @@ impl<'a> Compiler<'a> {
         //              |  printStmt
         //              |  ifStmt
         //              |  whileStmt
+        //              |  forStmt
         //              |  block ;
         if self.my_match(TokenType::Print) {
             self.print_statement();
@@ -533,6 +587,8 @@ impl<'a> Compiler<'a> {
             self.if_statement();
         } else if self.my_match(TokenType::While) {
             self.while_statement();
+        } else if self.my_match(TokenType::For) {
+            self.for_statement();
         } else if self.my_match(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
