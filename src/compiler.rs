@@ -121,6 +121,16 @@ impl<'a> ParseRule<'a> {
                 infix: None,
                 precedence: Precedence::None,
             },
+            TokenType::And => ParseRule {
+                prefix: None,
+                infix: Some(Compiler::and_),
+                precedence: Precedence::And,
+            },
+            TokenType::Or => ParseRule {
+                prefix: None,
+                infix: Some(Compiler::or_),
+                precedence: Precedence::Or,
+            },
             _ => ParseRule {
                 prefix: None,
                 infix: None,
@@ -251,6 +261,22 @@ impl<'a> Compiler<'a> {
         self.emit_byte(OpCode::Return)
     }
 
+    fn emit_loop(&mut self, loop_start: usize) {
+        self.emit_byte(OpCode::Loop);
+
+        // Jump backwards by a given offset
+        // + 2 because we also need to consider the OP_LOOP instruction's own operands(2 bytes)
+        let offset = self.current_chunk().code.len() - loop_start + 2;
+
+        if offset > std::u16::MAX as usize {
+            self.error("Loop body too large.");
+        }
+
+        // Jump offset - 2 bytes operand
+        self.emit_byte((offset >> 8) as u8 & std::u8::MAX);
+        self.emit_byte(offset as u8 & std::u8::MAX);
+    }
+
     fn end_compiler(&mut self) {
         self.emit_return();
 
@@ -323,6 +349,26 @@ impl<'a> Compiler<'a> {
             TokenType::Nil => self.emit_byte(OpCode::Nil),
             _ => panic!("Unreachable!"),
         }
+    }
+
+    fn and_(&mut self, _can_assign: bool) {
+        let end_jump = self.emit_jump(OpCode::JumpIfFalse);
+
+        self.emit_byte(OpCode::Pop);
+        self.parse_precedence(Precedence::And);
+
+        self.patch_jump(end_jump);
+    }
+
+    fn or_(&mut self, _can_assign: bool) {
+        let else_jump = self.emit_jump(OpCode::JumpIfFalse);
+        let end_jump = self.emit_jump(OpCode::Jump);
+
+        self.patch_jump(else_jump);
+        self.emit_byte(OpCode::Pop);
+
+        self.parse_precedence(Precedence::Or);
+        self.patch_jump(end_jump);
     }
 
     fn parse_precedence(&mut self, precedence: Precedence) {
@@ -435,16 +481,34 @@ impl<'a> Compiler<'a> {
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
 
         let then_jump = self.emit_jump(OpCode::JumpIfFalse);
-        self.emit_byte(OpCode::Pop);
+        self.emit_byte(OpCode::Pop); // pop the condition expression bool
         self.statement();
-        // Jump to the next statement after the else branch
+
         let else_jump = self.emit_jump(OpCode::Jump);
+        // [JumpIfFalse] Jump to the next statement after the body
         self.patch_jump(then_jump);
-        self.emit_byte(OpCode::Pop);
+        self.emit_byte(OpCode::Pop); // pop the condition expression bool
         if self.my_match(TokenType::Else) {
             self.statement();
         }
+        // [Jump] Jump to the next statement after the if statement
         self.patch_jump(else_jump);
+    }
+
+    fn while_statement(&mut self) {
+        let loop_start = self.current_chunk().code.len();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+        self.emit_byte(OpCode::Pop); // pop the condition expression bool
+        self.statement();
+
+        self.emit_loop(loop_start);
+
+        self.patch_jump(exit_jump); // jump to the next statement after the while body
+        self.emit_byte(OpCode::Pop); // pop the condition expression bool, another path
     }
 
     /// Keep parsing declarations and statements until it hits the closing brace. It will also
@@ -461,11 +525,14 @@ impl<'a> Compiler<'a> {
         // statement    -> exprStmt
         //              |  printStmt
         //              |  ifStmt
+        //              |  whileStmt
         //              |  block ;
         if self.my_match(TokenType::Print) {
             self.print_statement();
         } else if self.my_match(TokenType::If) {
             self.if_statement();
+        } else if self.my_match(TokenType::While) {
+            self.while_statement();
         } else if self.my_match(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
