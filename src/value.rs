@@ -1,3 +1,4 @@
+use crate::chunk::Chunk;
 #[derive(Clone, Debug)]
 pub enum Value {
     Bool(bool),
@@ -5,6 +6,12 @@ pub enum Value {
     Number(f64),
     /// A pointer to a String in the heap
     String(String),
+    Function {
+        name: String,
+        /// The number of parameters the function expects
+        arity: usize,
+        chunk: Chunk,
+    },
 }
 
 impl std::fmt::Display for Value {
@@ -14,6 +21,11 @@ impl std::fmt::Display for Value {
             Self::Bool(v) => write!(f, "{v}"),
             Self::Nil => write!(f, "nil"),
             Self::String(s) => write!(f, "{s}"),
+            Self::Function {
+                name,
+                arity,
+                chunk,
+            } => write!(f, "{name}"),
         }
     }
 }
@@ -68,7 +80,7 @@ impl std::ops::Mul for Value {
 }
 
 // A list of the values that appear as literals in the program
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ValueArray {
     pub values: Vec<Value>,
 }

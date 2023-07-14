@@ -74,7 +74,7 @@ impl From<u8> for OpCode {
 }
 
 /// A chunk is a series of instrucitons
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Chunk {
     pub code: Vec<u8>,
     pub constants: ValueArray,
