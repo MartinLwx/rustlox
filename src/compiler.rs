@@ -1,7 +1,7 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::disassembler::disassemble_chunk;
 use crate::scanner::{Scanner, Token, TokenType};
-use crate::value::Value;
+use crate::value::{Function, FunctionType, Value};
 use crate::vm::InterpretResult;
 
 #[derive(Default)]
@@ -161,6 +161,8 @@ pub struct Compiler<'a> {
     compiling_chunk: &'a mut Chunk,
     locals: Vec<Local>,
     scope_depth: i32,
+    function: Function,
+    function_type: FunctionType,
 }
 
 impl<'a> Compiler<'a> {
@@ -171,6 +173,8 @@ impl<'a> Compiler<'a> {
             compiling_chunk: chunk,
             locals: vec![],
             scope_depth: 0,
+            function: Function::new(),
+            function_type: FunctionType::default(),
         }
     }
 
@@ -230,8 +234,10 @@ impl<'a> Compiler<'a> {
         self.error_at_current(msg);
     }
 
+    /// The current chunk refers to the chunk onwed by the function we're in the middle of
+    /// compiling
     fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.compiling_chunk
+        &mut self.function.chunk
     }
 
     fn emit_byte<T>(&mut self, byte: T)
@@ -277,15 +283,22 @@ impl<'a> Compiler<'a> {
         self.emit_byte(offset as u8 & std::u8::MAX);
     }
 
-    fn end_compiler(&mut self) {
+    fn end_compiler(&mut self) -> &Function {
         self.emit_return();
 
         #[cfg(debug_assertions)]
         {
             if !self.parser.had_error {
-                disassemble_chunk(self.current_chunk(), "code");
+                let name = if self.function.name == "" {
+                    "<script>".to_string()
+                } else {
+                    self.function.name.clone()
+                };
+                disassemble_chunk(self.current_chunk(), &name);
             }
         }
+
+        &self.function
     }
 
     fn number(&mut self, _can_assign: bool) {
@@ -790,17 +803,17 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn compile(&mut self, source: &str) -> InterpretResult {
+    pub fn compile(&mut self, source: &str) -> Result<&Function, InterpretResult> {
         self.scanner.init_scanner(source);
         self.advance();
         while !self.my_match(TokenType::Eof) {
             self.declaration();
         }
-        self.end_compiler();
+
         if self.parser.had_error {
-            InterpretResult::CompileError
+            Err(InterpretResult::CompileError)
         } else {
-            InterpretResult::Ok
+            Ok(self.end_compiler())
         }
     }
 }

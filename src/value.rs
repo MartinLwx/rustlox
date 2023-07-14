@@ -1,17 +1,38 @@
 use crate::chunk::Chunk;
 #[derive(Clone, Debug)]
+pub struct Function {
+    pub name: String,
+    /// The number of parameters the function expects
+    pub arity: usize,
+    pub chunk: Chunk,
+}
+
+/// Let the compiler tell when it's compiling top-level code vs. the body of a function
+#[derive(Debug, Default)]
+pub enum FunctionType {
+    Function,
+    #[default]
+    Script,
+}
+
+impl Function {
+    pub fn new() -> Self {
+        Self {
+            name: String::new(),
+            arity: 0,
+            chunk: Chunk::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum Value {
     Bool(bool),
     Nil,
     Number(f64),
     /// A pointer to a String in the heap
     String(String),
-    Function {
-        name: String,
-        /// The number of parameters the function expects
-        arity: usize,
-        chunk: Chunk,
-    },
+    Func(Function),
 }
 
 impl std::fmt::Display for Value {
@@ -21,11 +42,15 @@ impl std::fmt::Display for Value {
             Self::Bool(v) => write!(f, "{v}"),
             Self::Nil => write!(f, "nil"),
             Self::String(s) => write!(f, "{s}"),
-            Self::Function {
-                name,
-                arity,
-                chunk,
-            } => write!(f, "{name}"),
+            Self::Func(func) => write!(
+                f,
+                "{}",
+                if func.name == "" {
+                    "<script>"
+                } else {
+                    &func.name
+                }
+            ),
         }
     }
 }
