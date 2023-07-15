@@ -644,18 +644,19 @@ impl Compiler {
 
     /// Consume the next token, which must be an identifier. Add its lexeme to the chunks's
     /// constants table as a string, and then returns the constant table index where it was added
-    fn parse_variable(&mut self, error_msg: &str) -> u8 {
+    fn parse_variable(&mut self, error_msg: &str) -> (String, u8) {
         self.consume(TokenType::Identifier, error_msg);
 
         self.declare_variable();
         // Exit the function  and return a dummy index if we're in a local scope
         // , because we don't need to store the variable's name into the sontant table.
         if self.state.scope_depth > 0 {
-            return 0;
+            return (String::new(), 0);
         }
 
+        let identifier_name = self.parser.previous.lexeme.clone();
         let previous_token = std::mem::take(&mut self.parser.previous);
-        self.identifier_constant(previous_token)
+        (identifier_name, self.identifier_constant(previous_token))
     }
 
     /// Add the local variable to the compilers's list of variables
@@ -716,7 +717,7 @@ impl Compiler {
     }
 
     fn var_declaration(&mut self) {
-        let global = self.parse_variable("Expect variable name.");
+        let (_, global) = self.parse_variable("Expect variable name.");
 
         // look for an initializer expresssion
         if self.my_match(TokenType::Equal) {
@@ -737,15 +738,30 @@ impl Compiler {
         self.define_variable(global);
     }
 
-    fn function(&mut self, func_type: FunctionType) {
+    fn function(&mut self, func_name: String, func_type: FunctionType) {
         let old_state = std::mem::take(&mut self.state);
         self.state.function_type = func_type;
+        self.state.function.name = func_name;
         self.state.enclosing = Some(Box::new(old_state));
         // now we have a new state to operate on
 
         self.begin_scope();
 
         self.consume(TokenType::LeftParen, "Expect '(' after function name.");
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.state.function.arity += 1;
+                if self.state.function.arity > 255 {
+                    self.error_at_current("Can't have more than 255 parameters.");
+                }
+                let (_, constant) = self.parse_variable("Expect parameter name.");
+                self.define_variable(constant);
+
+                if !self.my_match(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
         self.consume(TokenType::RightParen, "Expect ')' after parameters.");
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
         self.block();
@@ -756,12 +772,9 @@ impl Compiler {
     }
 
     fn func_declaration(&mut self) {
-        let global = self.parse_variable("Expect func name");
-        // if let Value::String(name) = &self.state.function.chunk.constants.values[global as usize] {
-        //     self.state.function.name = name.to_string();
-        // }
+        let (func_name, global) = self.parse_variable("Expect func name");
         self.mark_initialized();
-        self.function(FunctionType::Function);
+        self.function(func_name, FunctionType::Function);
         self.define_variable(global);
     }
 
