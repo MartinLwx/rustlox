@@ -4,7 +4,7 @@ use crate::scanner::{Scanner, Token, TokenType};
 use crate::value::{Function, FunctionType, Value};
 use crate::vm::InterpretResult;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Parser {
     current: Token,
     previous: Token,
@@ -154,25 +154,39 @@ impl Local {
     }
 }
 
-pub struct Compiler {
-    scanner: Scanner,
-    parser: Parser,
-    // use a reference to avoid the overhead of copy the whole chunk
+// To handle function declaration, we need to let the compiler reset the "state" but keep scanner
+// and parser untouched. That's why I create this struct
+#[derive(Default, Debug)]
+struct CompilerState {
+    enclosing: Option<Box<CompilerState>>,
     locals: Vec<Local>,
     scope_depth: i32,
     function: Function,
     function_type: FunctionType,
 }
 
+impl CompilerState {
+    pub fn new(function_type: FunctionType) -> Self {
+        Self {
+            function_type,
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Compiler {
+    scanner: Scanner,
+    parser: Parser,
+    state: CompilerState,
+}
+
 impl Compiler {
-    pub fn new() -> Self {
+    pub fn new(function_type: FunctionType) -> Self {
         Self {
             scanner: Scanner::new(),
             parser: Parser::default(),
-            locals: vec![],
-            scope_depth: 0,
-            function: Function::new(),
-            function_type: FunctionType::default(),
+            state: CompilerState::new(function_type),
         }
     }
 
@@ -235,7 +249,7 @@ impl Compiler {
     /// The current chunk refers to the chunk onwed by the function we're in the middle of
     /// compiling
     fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.function.chunk
+        &mut self.state.function.chunk
     }
 
     fn emit_byte<T>(&mut self, byte: T)
@@ -281,22 +295,28 @@ impl Compiler {
         self.emit_byte(offset as u8 & std::u8::MAX);
     }
 
-    fn end_compiler(mut self) -> Function {
+    fn end_compiler(&mut self) -> Function {
         self.emit_return();
 
         #[cfg(debug_assertions)]
         {
             if !self.parser.had_error {
-                let name = if self.function.name.is_empty() {
+                let name = if self.state.function.name.is_empty() {
                     "<script>".to_string()
                 } else {
-                    self.function.name.clone()
+                    self.state.function.name.clone()
                 };
                 disassemble_chunk(self.current_chunk(), &name);
             }
         }
 
-        self.function
+        let ret_function = std::mem::take(&mut self.state.function);
+
+        if self.state.enclosing.is_some() {
+            self.state = *self.state.enclosing.take().unwrap();
+        }
+
+        ret_function
     }
 
     fn number(&mut self, _can_assign: bool) {
@@ -447,16 +467,16 @@ impl Compiler {
 
     /// To "create" a scope, we just need to increment the current depth
     fn begin_scope(&mut self) {
-        self.scope_depth += 1;
+        self.state.scope_depth += 1;
     }
 
     /// To "leave" a scope, we just need to decrease the current depth
     fn end_scope(&mut self) {
-        self.scope_depth -= 1;
-        while let Some(v) = self.locals.last() {
-            if v.depth > self.scope_depth {
+        self.state.scope_depth -= 1;
+        while let Some(v) = self.state.locals.last() {
+            if v.depth > self.state.scope_depth {
                 self.emit_byte(OpCode::Pop);
-                self.locals.pop().unwrap();
+                self.state.locals.pop().unwrap();
             } else {
                 break;
             }
@@ -575,7 +595,7 @@ impl Compiler {
         self.end_scope();
     }
 
-    /// Keep parsing declarations and statements until it hits the closing brace. It will also
+    /// Keep parsing declarations and statements and consume the final '}'. It will also
     /// check for the end of the token stream
     fn block(&mut self) {
         // block        -> "{" declarations* "}"
@@ -630,7 +650,7 @@ impl Compiler {
         self.declare_variable();
         // Exit the function  and return a dummy index if we're in a local scope
         // , because we don't need to store the variable's name into the sontant table.
-        if self.scope_depth > 0 {
+        if self.state.scope_depth > 0 {
             return 0;
         }
 
@@ -640,26 +660,26 @@ impl Compiler {
 
     /// Add the local variable to the compilers's list of variables
     fn add_local(&mut self, token: Token) {
-        if self.locals.len() == std::u8::MAX as usize {
+        if self.state.locals.len() == std::u8::MAX as usize {
             self.error("Too many local variables in function.");
             return;
         }
         // -1 is a special sentinel value - this local variable is in "unitialized" state
-        self.locals.push(Local::new(token, -1));
+        self.state.locals.push(Local::new(token, -1));
     }
 
     fn declare_variable(&mut self) {
         // Exit if we are in global scope
-        if self.scope_depth == 0 {
+        if self.state.scope_depth == 0 {
             return;
         }
         // Prevent redeclaring a variable with the same name as previous declaration
         let name = std::mem::take(&mut self.parser.previous);
         let mut same_name_in_same_scope = false;
-        for token in self.locals.iter().rev() {
+        for token in self.state.locals.iter().rev() {
             // It's only an error to have 2 variables with the same name in the same local scope,
             // which means they must have the sanme scope_depth
-            if token.depth < self.scope_depth {
+            if token.depth < self.state.scope_depth {
                 break;
             }
             if token.name.lexeme == name.lexeme {
@@ -675,15 +695,20 @@ impl Compiler {
     }
 
     fn mark_initialized(&mut self) {
-        if let Some(local) = self.locals.last_mut() {
-            local.depth = self.scope_depth;
+        // when we declare a function in the top-level, the function is bound to a global variable.
+        // There is no local variable to mark initialized
+        if self.state.scope_depth == 0 {
+            return;
+        }
+        if let Some(local) = self.state.locals.last_mut() {
+            local.depth = self.state.scope_depth;
         }
     }
 
     /// Emit the bytecode for storing the variable's value in the global variable hashtable
     /// Emit the bytecode to store a local variable if we're in a local scope(just return)
     fn define_variable(&mut self, global: u8) {
-        if self.scope_depth > 0 {
+        if self.state.scope_depth > 0 {
             self.mark_initialized();
             return;
         }
@@ -712,11 +737,42 @@ impl Compiler {
         self.define_variable(global);
     }
 
+    fn function(&mut self, func_type: FunctionType) {
+        let old_state = std::mem::take(&mut self.state);
+        self.state.function_type = func_type;
+        self.state.enclosing = Some(Box::new(old_state));
+        // now we have a new state to operate on
+
+        self.begin_scope();
+
+        self.consume(TokenType::LeftParen, "Expect '(' after function name.");
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.");
+        self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
+        self.block();
+
+        let function = self.end_compiler();
+        let val = self.make_constant(Value::Func(function));
+        self.emit_bytes(OpCode::Constant, val);
+    }
+
+    fn func_declaration(&mut self) {
+        let global = self.parse_variable("Expect func name");
+        // if let Value::String(name) = &self.state.function.chunk.constants.values[global as usize] {
+        //     self.state.function.name = name.to_string();
+        // }
+        self.mark_initialized();
+        self.function(FunctionType::Function);
+        self.define_variable(global);
+    }
+
     fn declaration(&mut self) {
         // declaration  -> varDecl
+        //              |  funDecl
         //              |  statement ;
         if self.my_match(TokenType::Var) {
             self.var_declaration();
+        } else if self.my_match(TokenType::Fun) {
+            self.func_declaration();
         } else {
             self.statement();
         }
@@ -732,7 +788,7 @@ impl Compiler {
     fn resolve_local(&mut self, token: &Token) -> Option<u8> {
         let mut use_uninitialized_variable = false;
         let mut local_index = None;
-        for (idx, i) in self.locals.iter().enumerate().rev() {
+        for (idx, i) in self.state.locals.iter().enumerate().rev() {
             if i.name.lexeme == token.lexeme {
                 if i.depth == -1 {
                     use_uninitialized_variable = true;

@@ -1,7 +1,7 @@
 use crate::chunk::OpCode;
 use crate::compiler::Compiler;
 use crate::disassembler::disassemble_instruction;
-use crate::value::{Function, Value};
+use crate::value::{Function, FunctionType, Value};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
@@ -51,7 +51,7 @@ impl VM {
 
     /// Runs the chunk and then responds with a value
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
-        let compiler = Compiler::new();
+        let compiler = Compiler::new(FunctionType::Script);
         let Ok(func) = compiler.compile(source) else {return InterpretResult::CompileError};
         self.frames.push(CallFrame::new(func));
         self.run()

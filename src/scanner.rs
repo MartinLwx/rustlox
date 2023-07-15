@@ -53,6 +53,7 @@ pub struct Token {
     pub line: usize,
 }
 
+#[derive(Debug)]
 pub struct Scanner {
     source: Vec<char>,
     /// Marks the beginning of the current lexeme being scanned

@@ -20,3 +20,7 @@ $ cargo run -- <file>
 - 17.2 Parsing Tokens - Use `std::mem::take` to handle `self.parser.previous = self.parser.current;` and derive `Default` for the `Token` type.
 - 17.6 A Pratt Parser - Impl a `next` associated function for `Precedence` struct to get the next enum item.
 - 18.1 Tagged Unions  - Use `enum` instead of `union`, as the `enum` type is quite powerful in Rust.
+- 24.4 Function declaration
+    - Set a `CompilerState` field for `Compiler` struct, which contains local variables, scope depth, function and function_type
+    - Before compiling function declaration, use `std::mem::take` to remember the old state.
+    - After compiling function declaration, use `std::mem::swap` to restore the previous state.

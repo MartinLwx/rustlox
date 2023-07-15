@@ -1,5 +1,5 @@
 use crate::chunk::Chunk;
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct Function {
     pub name: String,
     /// The number of parameters the function expects
@@ -105,7 +105,7 @@ impl std::ops::Mul for Value {
 }
 
 // A list of the values that appear as literals in the program
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct ValueArray {
     pub values: Vec<Value>,
 }
