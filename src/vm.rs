@@ -1,7 +1,7 @@
-use crate::chunk::{Chunk, OpCode};
+use crate::chunk::OpCode;
 use crate::compiler::Compiler;
 use crate::disassembler::disassemble_instruction;
-use crate::value::Value;
+use crate::value::{Function, Value};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
@@ -11,12 +11,25 @@ pub enum InterpretResult {
     RuntimeError,
 }
 
-pub struct VM {
-    chunk: Chunk,
+#[derive(Debug)]
+pub struct CallFrame {
+    function: Function,
+    ip: usize,
+    slots: usize,
+}
 
-    /// `ip` = instruction pointer, which is also called  "PC". The `ip` always points to the next
-    /// instruction
-    pub ip: usize,
+impl CallFrame {
+    pub fn new(func: Function) -> Self {
+        Self {
+            function: func,
+            ip: 0,
+            slots: 0,
+        }
+    }
+}
+
+pub struct VM {
+    pub frames: Vec<CallFrame>,
 
     pub stack: Vec<Value>,
 
@@ -26,43 +39,47 @@ pub struct VM {
 impl VM {
     pub fn new() -> Self {
         Self {
-            chunk: Chunk::new(),
-            ip: 0,
+            frames: vec![],
             stack: vec![],
             globals: HashMap::new(),
         }
     }
 
+    pub fn current_frame(&mut self) -> &mut CallFrame {
+        self.frames.last_mut().unwrap()
+    }
+
     /// Runs the chunk and then responds with a value
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
-        let mut chunk = Chunk::new();
-        let mut compiler = Compiler::new(&mut chunk);
-        compiler.compile(source);
-        self.chunk = chunk;
-        self.ip = 0;
+        let compiler = Compiler::new();
+        let Ok(func) = compiler.compile(source) else {return InterpretResult::CompileError};
+        self.frames.push(CallFrame::new(func));
         self.run()
     }
 
-    /// Read the current byte pointed by `self.ip` as an instruction and then advances the `self.ip`
-    fn read_byte(&mut self) -> OpCode {
-        self.ip += 1;
-        self.chunk.code[self.ip - 1].into()
+    /// Read the current byte pointed by `frame.ip` as an instruction and then advances the `self.ip`
+    fn read_byte(&mut self) -> u8 {
+        let frame = self.current_frame();
+        frame.ip += 1;
+        frame.function.chunk.code[frame.ip - 1]
     }
 
     /// Read a two bytes operand
     fn read_short(&mut self) -> u16 {
-        self.ip += 2;
-        let last_two = self.chunk.code[self.ip - 2] as u16;
-        let last_one = self.chunk.code[self.ip - 1] as u16;
+        let frame = self.current_frame();
+        frame.ip += 2;
+        let last_two = frame.function.chunk.code[frame.ip - 2] as u16;
+        let last_one = frame.function.chunk.code[frame.ip - 1] as u16;
 
         (last_two << 8) | last_one
     }
 
     /// For a two bytes byte code: `[Opcode, the index of value]`, return the corresponding value
     fn read_constant(&mut self) -> Value {
-        let constant_idx = self.chunk.code[self.ip];
-        self.ip += 1;
-        self.chunk.constants.values[constant_idx as usize].clone()
+        let frame = self.current_frame();
+        let constant_idx = frame.function.chunk.code[frame.ip];
+        frame.ip += 1;
+        frame.function.chunk.constants.values[constant_idx as usize].clone()
     }
 
     fn binary_operator(&mut self, op: char) -> InterpretResult {
@@ -102,7 +119,9 @@ impl VM {
     fn runtime_error(&mut self, msg: &str) {
         // The VM advances past each instruction before executing it
         eprintln!("{msg}");
-        let line = self.chunk.lines[self.ip - 1];
+        let frame = self.current_frame();
+        let instruction = frame.ip - frame.function.chunk.code.len() - 1;
+        let line = frame.function.chunk.lines[instruction];
         eprintln!("[line {line}] in script");
         self.reset_stack()
     }
@@ -133,10 +152,13 @@ impl VM {
                     print!("[ {val} ]");
                 }
                 println!();
-                disassemble_instruction(&self.chunk, self.ip);
+                disassemble_instruction(
+                    &self.frames.last().unwrap().function.chunk,
+                    self.frames.last().unwrap().ip,
+                );
             }
 
-            let instruction = self.read_byte();
+            let instruction: OpCode = self.read_byte().into();
             match instruction {
                 OpCode::Return => {
                     return InterpretResult::Ok;
@@ -234,32 +256,36 @@ impl VM {
                     }
                 }
                 OpCode::GetLocal => {
-                    // It taks a single-byte operand for the stack slot where the local lives
+                    // It takes a single-byte operand for the stack slot where the local lives
                     let index = self.read_byte();
-                    // Load the value from that index and then pushese it on top of the stack s.t.
+                    let slots_offset = self.current_frame().slots;
+
+                    // Load the value from that index and then push it on top of the stack s.t.
                     // later instruction can find it
-                    self.stack.push(self.stack[index as usize].clone());
+                    self.stack
+                        .push(self.stack[index as usize + slots_offset].clone());
                 }
                 OpCode::SetLocal => {
                     // It taks a single-byte operand for the stack slot where the local lives
                     let index = self.read_byte();
-                    self.stack[index as usize] = self.stack.last().unwrap().clone();
+                    let slots_offset = self.current_frame().slots;
+                    self.stack[index as usize + slots_offset] = self.stack.last().unwrap().clone();
                 }
                 OpCode::JumpIfFalse => {
                     let offset = self.read_short();
                     if let Some(condition) = self.stack.last() {
                         if self.is_falsey(condition) {
-                            self.ip += offset as usize;
+                            self.frames.last_mut().unwrap().ip += offset as usize;
                         }
                     }
                 }
                 OpCode::Jump => {
                     let offset = self.read_short();
-                    self.ip += offset as usize;
+                    self.current_frame().ip += offset as usize;
                 }
                 OpCode::Loop => {
                     let offset = self.read_short();
-                    self.ip -= offset as usize;
+                    self.current_frame().ip -= offset as usize;
                 }
             }
         }

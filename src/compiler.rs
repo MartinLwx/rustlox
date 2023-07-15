@@ -46,17 +46,17 @@ impl Precedence {
 }
 
 /// A function type that takes no arguments and returns nothing
-type ParseFn<'a> = fn(&mut Compiler<'a>, bool) -> (); // function pointer
+type ParseFn = fn(&mut Compiler, bool) -> (); // function pointer
 
 /// The three properties which represents a single row in the Pratt parser table
-struct ParseRule<'a> {
-    prefix: Option<ParseFn<'a>>,
-    infix: Option<ParseFn<'a>>,
+struct ParseRule {
+    prefix: Option<ParseFn>,
+    infix: Option<ParseFn>,
     precedence: Precedence,
 }
 
-impl<'a> ParseRule<'a> {
-    fn get_rule(op_type: TokenType) -> ParseRule<'a> {
+impl ParseRule {
+    fn get_rule(op_type: TokenType) -> ParseRule {
         match op_type {
             TokenType::LeftParen => ParseRule {
                 prefix: Some(Compiler::grouping),
@@ -154,23 +154,21 @@ impl Local {
     }
 }
 
-pub struct Compiler<'a> {
+pub struct Compiler {
     scanner: Scanner,
     parser: Parser,
     // use a reference to avoid the overhead of copy the whole chunk
-    compiling_chunk: &'a mut Chunk,
     locals: Vec<Local>,
     scope_depth: i32,
     function: Function,
     function_type: FunctionType,
 }
 
-impl<'a> Compiler<'a> {
-    pub fn new(chunk: &'a mut Chunk) -> Self {
+impl Compiler {
+    pub fn new() -> Self {
         Self {
             scanner: Scanner::new(),
             parser: Parser::default(),
-            compiling_chunk: chunk,
             locals: vec![],
             scope_depth: 0,
             function: Function::new(),
@@ -283,13 +281,13 @@ impl<'a> Compiler<'a> {
         self.emit_byte(offset as u8 & std::u8::MAX);
     }
 
-    fn end_compiler(&mut self) -> &Function {
+    fn end_compiler(mut self) -> Function {
         self.emit_return();
 
         #[cfg(debug_assertions)]
         {
             if !self.parser.had_error {
-                let name = if self.function.name == "" {
+                let name = if self.function.name.is_empty() {
                     "<script>".to_string()
                 } else {
                     self.function.name.clone()
@@ -298,7 +296,7 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        &self.function
+        self.function
     }
 
     fn number(&mut self, _can_assign: bool) {
@@ -803,7 +801,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn compile(&mut self, source: &str) -> Result<&Function, InterpretResult> {
+    pub fn compile(mut self, source: &str) -> Result<Function, InterpretResult> {
         self.scanner.init_scanner(source);
         self.advance();
         while !self.my_match(TokenType::Eof) {

@@ -45,7 +45,7 @@ impl std::fmt::Display for Value {
             Self::Func(func) => write!(
                 f,
                 "{}",
-                if func.name == "" {
+                if func.name.is_empty() {
                     "<script>"
                 } else {
                     &func.name
