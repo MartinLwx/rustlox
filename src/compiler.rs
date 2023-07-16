@@ -60,8 +60,8 @@ impl ParseRule {
         match op_type {
             TokenType::LeftParen => ParseRule {
                 prefix: Some(Compiler::grouping),
-                infix: None,
-                precedence: Precedence::None,
+                infix: Some(Compiler::call),
+                precedence: Precedence::Call,
             },
             TokenType::Minus => ParseRule {
                 prefix: Some(Compiler::unary),
@@ -370,6 +370,31 @@ impl Compiler {
             TokenType::LessEqual => self.emit_bytes(OpCode::Greater, OpCode::Not),
             _ => panic!("Unreachable!"),
         }
+    }
+
+    /// Return the number of arguments
+    /// Each argument expression generates code that leaves its value on the stack
+    fn argument_list(&mut self) -> u8 {
+        let mut arg_cnt = 0;
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.expression();
+                if arg_cnt == u8::MAX {
+                    self.error("Can't have more than 255 arguments.");
+                }
+                arg_cnt += 1;
+                if !self.my_match(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after arguments.");
+        arg_cnt
+    }
+
+    fn call(&mut self, _can_assign: bool) {
+        let arg_cnt = self.argument_list();
+        self.emit_bytes(OpCode::Call, arg_cnt);
     }
 
     fn literal(&mut self, _can_assign: bool) {

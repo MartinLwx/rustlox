@@ -15,15 +15,16 @@ pub enum InterpretResult {
 pub struct CallFrame {
     function: Function,
     ip: usize,
+    /// The starts position of this CallFrame in the VM's stack
     slots: usize,
 }
 
 impl CallFrame {
-    pub fn new(func: Function) -> Self {
+    pub fn new(function: Function, ip: usize, slots: usize) -> Self {
         Self {
-            function: func,
-            ip: 0,
-            slots: 0,
+            function,
+            ip,
+            slots,
         }
     }
 }
@@ -53,7 +54,7 @@ impl VM {
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let compiler = Compiler::new(FunctionType::Script);
         let Ok(func) = compiler.compile(source) else {return InterpretResult::CompileError};
-        self.frames.push(CallFrame::new(func));
+        self.frames.push(CallFrame::new(func, 0, 0));
         self.run()
     }
 
@@ -119,10 +120,21 @@ impl VM {
     fn runtime_error(&mut self, msg: &str) {
         // The VM advances past each instruction before executing it
         eprintln!("{msg}");
-        let frame = self.current_frame();
-        let instruction = frame.ip - frame.function.chunk.code.len() - 1;
-        let line = frame.function.chunk.lines[instruction];
-        eprintln!("[line {line}] in script");
+
+        // print stack trace
+        for frame in self.frames.iter().rev() {
+            let instruction = frame.ip - 1;
+            let line = frame.function.chunk.lines[instruction];
+            eprintln!(
+                "[line {}] in {}",
+                line,
+                if frame.function.name.is_empty() {
+                    "<script>"
+                } else {
+                    &frame.function.name
+                }
+            );
+        }
         self.reset_stack()
     }
 
@@ -138,6 +150,34 @@ impl VM {
             (Value::Number(x), Value::Number(y)) => x == y,
             (Value::String(s1), Value::String(s2)) => s1 == s2,
             _ => false,
+        }
+    }
+
+    /// Create a new CallFrame and push it to `self.frames`
+    fn call(&mut self, func: Function, arg_cnt: u8) -> bool {
+        if arg_cnt as usize != func.arity {
+            self.runtime_error(&format!(
+                "Expected {} arguments but got {}.",
+                func.arity, arg_cnt,
+            ));
+            return false;
+        }
+        // the starts slots DOES NOT include the function name in the stack
+        self.frames
+            .push(CallFrame::new(func, 0, self.stack.len() - arg_cnt as usize));
+
+        true
+    }
+
+    fn call_value(&mut self, arg_cnt: u8) -> bool {
+        // todo: can we avoid the cloning overhead?
+        //       how to solve the ownership issue?
+        let callee = self.stack[self.stack.len() - 1 - arg_cnt as usize].clone();
+        if let Value::Func(f) = callee {
+            self.call(f, arg_cnt)
+        } else {
+            self.runtime_error("Can only call functions and classes.");
+            false
         }
     }
 
@@ -232,6 +272,8 @@ impl VM {
 
                     if let Value::String(s) = name {
                         if self.globals.contains_key(&s) {
+                            // todo: copying function object may be inefficient here, should we
+                            // avoid the clone() here?
                             self.stack.push(self.globals.get(&s).unwrap().clone());
                         } else {
                             self.runtime_error(&format!("Undefined variable '{s}'"));
@@ -286,6 +328,14 @@ impl VM {
                 OpCode::Loop => {
                     let offset = self.read_short();
                     self.current_frame().ip -= offset as usize;
+                }
+                OpCode::Call => {
+                    let arg_cnt = self.read_byte();
+                    // Do not decide callee here because the ownership issue
+                    // let callee = &self.stack[self.stack.len() - 1 - arg_cnt as usize];
+                    if !self.call_value(arg_cnt) {
+                        return InterpretResult::RuntimeError;
+                    }
                 }
             }
         }

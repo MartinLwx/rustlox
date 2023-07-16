@@ -33,6 +33,7 @@ pub enum OpCode {
     /// Unconditional jump
     Jump,
     Loop,
+    Call,
 }
 
 impl From<OpCode> for u8 {
@@ -68,6 +69,7 @@ impl From<u8> for OpCode {
             21 => Self::JumpIfFalse,
             22 => Self::Jump,
             23 => Self::Loop,
+            24 => Self::Call,
             _ => unimplemented!("May be later"),
         }
     }
