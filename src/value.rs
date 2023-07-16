@@ -8,7 +8,7 @@ pub struct Function {
 }
 
 /// Let the compiler tell when it's compiling top-level code vs. the body of a function
-#[derive(Debug, Default)]
+#[derive(PartialEq, Debug, Default)]
 pub enum FunctionType {
     Function,
     #[default]

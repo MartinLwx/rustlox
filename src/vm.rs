@@ -201,7 +201,19 @@ impl VM {
             let instruction: OpCode = self.read_byte().into();
             match instruction {
                 OpCode::Return => {
-                    return InterpretResult::Ok;
+                    let result = self.stack.pop().unwrap();
+                    let return_addr = self.current_frame().slots.saturating_sub(1);
+                    self.frames.pop().unwrap();
+                    // It means we have finished executing the top-level code
+                    // , then we exit the VM
+                    if self.frames.is_empty() {
+                        return InterpretResult::Ok;
+                    }
+
+                    self.stack.truncate(return_addr);
+
+                    // The return value of the callee
+                    self.stack.push(result);
                 }
                 OpCode::Constant => {
                     let constant = self.read_constant();

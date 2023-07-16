@@ -73,12 +73,7 @@ impl ParseRule {
                 infix: Some(Compiler::binary),
                 precedence: Precedence::Term,
             },
-            TokenType::Slash => ParseRule {
-                prefix: None,
-                infix: Some(Compiler::binary),
-                precedence: Precedence::Factor,
-            },
-            TokenType::Star => ParseRule {
+            TokenType::Slash | TokenType::Star => ParseRule {
                 prefix: None,
                 infix: Some(Compiler::binary),
                 precedence: Precedence::Factor,
@@ -86,7 +81,7 @@ impl ParseRule {
             TokenType::Number => ParseRule {
                 prefix: Some(Compiler::number),
                 infix: None,
-                precedence: Precedence::Factor,
+                precedence: Precedence::None,
             },
             TokenType::Nil | TokenType::True | TokenType::False => ParseRule {
                 prefix: Some(Compiler::literal),
@@ -276,7 +271,9 @@ impl Compiler {
     }
 
     fn emit_return(&mut self) {
-        self.emit_byte(OpCode::Return)
+        // Lox will implicitly return nil
+        self.emit_byte(OpCode::Nil);
+        self.emit_byte(OpCode::Return);
     }
 
     fn emit_loop(&mut self, loop_start: usize) {
@@ -620,6 +617,21 @@ impl Compiler {
         self.end_scope();
     }
 
+    fn return_statement(&mut self) {
+        // We can't use return in the top-level
+        if self.state.function_type == FunctionType::Script {
+            self.error("Can't return from top-level code.");
+        }
+        if self.my_match(TokenType::Semicolon) {
+            // `emit_return` will implicitly return nil
+            self.emit_return();
+        } else {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after return value.");
+            self.emit_byte(OpCode::Return);
+        }
+    }
+
     /// Keep parsing declarations and statements and consume the final '}'. It will also
     /// check for the end of the token stream
     fn block(&mut self) {
@@ -636,6 +648,7 @@ impl Compiler {
         //              |  ifStmt
         //              |  whileStmt
         //              |  forStmt
+        //              |  returnStmt
         //              |  block ;
         if self.my_match(TokenType::Print) {
             self.print_statement();
@@ -645,6 +658,8 @@ impl Compiler {
             self.while_statement();
         } else if self.my_match(TokenType::For) {
             self.for_statement();
+        } else if self.my_match(TokenType::Return) {
+            self.return_statement();
         } else if self.my_match(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
