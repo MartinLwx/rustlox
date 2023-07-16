@@ -7,22 +7,21 @@ pub struct Function {
     pub chunk: Chunk,
 }
 
+#[derive(Clone)]
+pub struct NativeFunction(pub fn(&[Value]) -> Value);
+
+impl std::fmt::Debug for NativeFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<native fn>")
+    }
+}
+
 /// Let the compiler tell when it's compiling top-level code vs. the body of a function
 #[derive(PartialEq, Debug, Default)]
 pub enum FunctionType {
     Function,
     #[default]
     Script,
-}
-
-impl Function {
-    pub fn new() -> Self {
-        Self {
-            name: String::new(),
-            arity: 0,
-            chunk: Chunk::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -33,6 +32,7 @@ pub enum Value {
     /// A pointer to a String in the heap
     String(String),
     Func(Function),
+    NativeFunc(NativeFunction),
 }
 
 impl std::fmt::Display for Value {
@@ -44,13 +44,14 @@ impl std::fmt::Display for Value {
             Self::String(s) => write!(f, "{s}"),
             Self::Func(func) => write!(
                 f,
-                "{}",
+                "<fn {}>",
                 if func.name.is_empty() {
                     "<script>"
                 } else {
                     &func.name
                 }
             ),
+            Self::NativeFunc(..) => write!(f, "<native fn>"),
         }
     }
 }

@@ -84,14 +84,6 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn new() -> Self {
-        Self {
-            code: vec![],
-            constants: ValueArray::new(),
-            lines: vec![],
-        }
-    }
-
     pub fn write<T>(&mut self, byte: T, line: usize)
     where
         T: Into<u8>,

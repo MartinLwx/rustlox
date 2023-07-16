@@ -1,9 +1,10 @@
 use crate::chunk::OpCode;
 use crate::compiler::Compiler;
 use crate::disassembler::disassemble_instruction;
-use crate::value::{Function, FunctionType, Value};
+use crate::value::{Function, FunctionType, NativeFunction, Value};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub enum InterpretResult {
     Ok,
@@ -29,6 +30,14 @@ impl CallFrame {
     }
 }
 
+fn clock(_args: &[Value]) -> Value {
+    // see: https://stackoverflow.com/questions/26593387/how-can-i-get-the-current-time-in-milliseconds
+    let since_the_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    Value::Number(since_the_epoch.as_secs_f64())
+}
+
 pub struct VM {
     pub frames: Vec<CallFrame>,
 
@@ -39,11 +48,13 @@ pub struct VM {
 
 impl VM {
     pub fn new() -> Self {
-        Self {
+        let mut vm = Self {
             frames: vec![],
             stack: vec![],
             globals: HashMap::new(),
-        }
+        };
+        vm.define_native("clock", NativeFunction(clock));
+        vm
     }
 
     pub fn current_frame(&mut self) -> &mut CallFrame {
@@ -173,12 +184,25 @@ impl VM {
         // todo: can we avoid the cloning overhead?
         //       how to solve the ownership issue?
         let callee = self.stack[self.stack.len() - 1 - arg_cnt as usize].clone();
-        if let Value::Func(f) = callee {
-            self.call(f, arg_cnt)
-        } else {
-            self.runtime_error("Can only call functions and classes.");
-            false
+        match callee {
+            Value::Func(f) => self.call(f, arg_cnt),
+            Value::NativeFunc(fp) => {
+                let arg_start = self.stack.len() - arg_cnt as usize;
+                let result = fp.0(&self.stack[arg_start..]);
+                self.stack.truncate(arg_start - 1);
+                self.stack.push(result);
+                true
+            }
+            _ => {
+                self.runtime_error("Can only call functions and classes.");
+                false
+            }
         }
+    }
+
+    /// `fp` is a function pointer
+    fn define_native(&mut self, name: &str, fp: NativeFunction) {
+        self.globals.insert(name.to_string(), Value::NativeFunc(fp));
     }
 
     fn run(&mut self) -> InterpretResult {
