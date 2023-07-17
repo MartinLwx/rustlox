@@ -3,6 +3,7 @@ use crate::disassembler::disassemble_chunk;
 use crate::scanner::{Scanner, Token, TokenType};
 use crate::value::{Function, FunctionType, Value};
 use crate::vm::InterpretResult;
+use std::rc::Rc;
 
 #[derive(Debug, Default)]
 struct Parser {
@@ -807,7 +808,7 @@ impl Compiler {
         self.block();
 
         let function = self.end_compiler();
-        let val = self.make_constant(Value::Func(function));
+        let val = self.make_constant(Value::Func(Rc::new(function)));
         self.emit_bytes(OpCode::Constant, val);
     }
 

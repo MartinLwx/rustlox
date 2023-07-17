@@ -16,6 +16,14 @@ $ cargo run
 $ cargo run -- <file>
 ```
 
+## Benchmark
+A naive benchmark in my MBP Intel i5-8257U @1.40GHz:
+
+| operations | Rust(`-O`)    | Python 3.10.9 | rustlox | [PyLox](https://github.com/MartinLwx/pylox) |
+| ---------- | ------------- | ------------- | ------- | ------------------------------------------- |
+| `fib(35)`  | ~ 0.03s       | ~ 3s          | ~ 7s    | ~ 600s                                      |
+
+
 ## Notes
 - 17.2 Parsing Tokens - Use `std::mem::take` to handle `self.parser.previous = self.parser.current;` and derive `Default` for the `Token` type.
 - 17.6 A Pratt Parser - Impl a `next` associated function for the `Precedence` struct to get the next enum item.

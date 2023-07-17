@@ -4,6 +4,7 @@ use crate::disassembler::disassemble_instruction;
 use crate::value::{Function, FunctionType, NativeFunction, Value};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub enum InterpretResult {
@@ -14,14 +15,14 @@ pub enum InterpretResult {
 
 #[derive(Debug)]
 pub struct CallFrame {
-    function: Function,
+    function: Rc<Function>,
     ip: usize,
     /// The starts position of this CallFrame in the VM's stack
     slots: usize,
 }
 
 impl CallFrame {
-    pub fn new(function: Function, ip: usize, slots: usize) -> Self {
+    pub fn new(function: Rc<Function>, ip: usize, slots: usize) -> Self {
         Self {
             function,
             ip,
@@ -65,7 +66,7 @@ impl VM {
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let compiler = Compiler::new(FunctionType::Script);
         let Ok(func) = compiler.compile(source) else {return InterpretResult::CompileError};
-        self.frames.push(CallFrame::new(func, 0, 0));
+        self.frames.push(CallFrame::new(Rc::new(func), 0, 0));
         self.run()
     }
 
@@ -165,7 +166,7 @@ impl VM {
     }
 
     /// Create a new CallFrame and push it to `self.frames`
-    fn call(&mut self, func: Function, arg_cnt: u8) -> bool {
+    fn call(&mut self, func: Rc<Function>, arg_cnt: u8) -> bool {
         if arg_cnt as usize != func.arity {
             self.runtime_error(&format!(
                 "Expected {} arguments but got {}.",

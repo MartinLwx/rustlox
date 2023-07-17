@@ -1,4 +1,5 @@
 use crate::chunk::Chunk;
+use std::rc::Rc;
 #[derive(Default, Clone, Debug)]
 pub struct Function {
     pub name: String,
@@ -31,7 +32,7 @@ pub enum Value {
     Number(f64),
     /// A pointer to a String in the heap
     String(String),
-    Func(Function),
+    Func(Rc<Function>),
     NativeFunc(NativeFunction),
 }
 
