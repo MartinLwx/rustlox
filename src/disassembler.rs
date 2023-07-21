@@ -1,4 +1,5 @@
 use crate::chunk::{Chunk, OpCode};
+use crate::value::Value;
 
 /// Disassemble all of the instructions in the entire chunk
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
@@ -52,6 +53,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
 
             offset + 2
         }
+        OpCode::GetUpvalue => byte_instruction("OP_GET_UPVALUE", chunk, offset),
+        OpCode::SetUpvalue => byte_instruction("OP_SET_UPVALUE", chunk, offset),
     }
 }
 

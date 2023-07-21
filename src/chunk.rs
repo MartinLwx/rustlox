@@ -35,6 +35,8 @@ pub enum OpCode {
     Loop,
     Call,
     Closure,
+    SetUpvalue,
+    GetUpvalue,
 }
 
 impl From<OpCode> for u8 {
@@ -72,6 +74,8 @@ impl From<u8> for OpCode {
             23 => Self::Loop,
             24 => Self::Call,
             25 => Self::Closure,
+            26 => Self::SetUpvalue,
+            27 => Self::GetUpvalue,
             _ => unimplemented!("May be later"),
         }
     }

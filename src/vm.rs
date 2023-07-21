@@ -382,6 +382,8 @@ impl VM {
                     let rc_closure = Rc::new(Closure::new(func, None));
                     self.stack.push(Value::Closure(rc_closure));
                 }
+                OpCode::SetUpvalue => {}
+                OpCode::GetUpvalue => {}
             }
         }
     }

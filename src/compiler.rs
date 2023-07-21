@@ -150,6 +150,18 @@ impl Local {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct Upvalue {
+    pub is_local: bool,
+    pub index: usize,
+}
+
+impl Upvalue {
+    pub fn new(is_local: bool, index: usize) -> Self {
+        Self { is_local, index }
+    }
+}
+
 // To handle function declaration, we need to let the compiler reset the "state" but keep scanner
 // and parser untouched. That's why I create this struct
 #[derive(Default, Debug)]
@@ -159,6 +171,7 @@ struct CompilerState {
     scope_depth: i32,
     function: Function,
     function_type: FunctionType,
+    upvalues: Vec<Upvalue>,
 }
 
 impl CompilerState {
@@ -167,6 +180,70 @@ impl CompilerState {
             function_type,
             ..Default::default()
         }
+    }
+
+    /// Walk the list of locals that are currently in the scope, This ensures that inner local
+    /// variables correctly shadow locals with the same name in surrouding scopes
+    /// Returns
+    ///     Ok(u8): if we find the local variable and it is initialized
+    ///     Err(...): we find the local variable and it is uninitialized
+    ///     Err(...): we do ont find the local variable
+    fn resolve_local(&self, token: &Token) -> Result<usize, String> {
+        let mut use_uninitialized_variable = false;
+        let mut local_index = None;
+        for (idx, i) in self.locals.iter().enumerate().rev() {
+            if i.name.lexeme == token.lexeme {
+                if i.depth == -1 {
+                    use_uninitialized_variable = true;
+                } else {
+                    local_index = Some(idx);
+                }
+            }
+        }
+        if use_uninitialized_variable {
+            Err("Can't read local variable in its own initializer.".to_string())
+        } else {
+            local_index.ok_or("".to_string())
+        }
+    }
+
+    /// Looks for a local variable declared in any of the surrounding functions
+    /// Returns the "upvalue index" if it found, else returns None
+    fn resolve_upvalue(&mut self, name: &Token) -> Option<usize> {
+        if let Some(enclosing) = &mut self.enclosing {
+            // case 1. upvalue stores a local variable in any
+            // try to resolve the `name` as a local variable in the enclosing environment
+            if let Ok(idx) = enclosing.resolve_local(name) {
+                return Some(self.add_upvalue(idx, true));
+            }
+
+            // case 2. upvalue stores the upvalue
+            if let Some(idx) = enclosing.resolve_upvalue(name) {
+                return Some(self.add_upvalue(idx, false));
+            }
+        }
+        None
+    }
+
+    /// Create an upvalue s.t the inner function can access the variable throught that
+    /// Returns the index of the upvalue in `self.state.upvalues`
+    fn add_upvalue(&mut self, idx: usize, is_local: bool) -> usize {
+        // Check if this upvalue has been added before
+        for (i, v) in self.upvalues.iter().enumerate() {
+            if v.index == idx && v.is_local == is_local {
+                return i;
+            }
+        }
+
+        if self.upvalues.len() == u8::MAX as usize {
+            // todo! how to return error message from this
+            // self.error("Too many closure variables in function.");
+            return 0;
+        }
+
+        self.upvalues.push(Upvalue::new(is_local, idx));
+
+        self.upvalues.len() - 1
     }
 }
 
@@ -810,6 +887,14 @@ impl Compiler {
         let function = self.end_compiler();
         let val = self.make_constant(Value::Func(Rc::new(function)));
         self.emit_bytes(OpCode::Closure, val);
+        for i in 0..self.state.upvalues.len() {
+            self.emit_byte(if self.state.upvalues[i].is_local {
+                1
+            } else {
+                0
+            });
+            self.emit_byte(self.state.upvalues[i].index as u8);
+        }
     }
 
     fn func_declaration(&mut self) {
@@ -836,34 +921,17 @@ impl Compiler {
         }
     }
 
-    /// Walk the list of locals that are currently in the scope, This ensures that inner local
-    /// variables correctly shadow locals with the same name in surrouding scopes
-    /// Return `None` if we can't find the `token` in `self.locals` or it is in "unitialized" state
-    fn resolve_local(&mut self, token: &Token) -> Option<u8> {
-        let mut use_uninitialized_variable = false;
-        let mut local_index = None;
-        for (idx, i) in self.state.locals.iter().enumerate().rev() {
-            if i.name.lexeme == token.lexeme {
-                if i.depth == -1 {
-                    use_uninitialized_variable = true;
-                } else {
-                    local_index = Some(idx as u8);
-                }
-            }
-        }
-        if use_uninitialized_variable {
-            self.error("Can't read local variable in its own initializer.");
-        }
-        local_index
-    }
-
     fn named_variable(&mut self, token: Token, can_assign: bool) {
         let mut get_op = OpCode::GetLocal;
         let mut set_op = OpCode::SetLocal;
 
         let mut arg = 0_u8;
-        if let Some(idx) = self.resolve_local(&token) {
-            arg = idx;
+        if let Some(idx) = self.state.resolve_upvalue(&token) {
+            arg = idx as u8;
+            get_op = OpCode::GetUpvalue;
+            set_op = OpCode::SetUpvalue;
+        } else if let Ok(idx) = self.state.resolve_local(&token) {
+            arg = idx as u8;
         } else {
             arg = self.identifier_constant(token);
             get_op = OpCode::GetGlobal;
