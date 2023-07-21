@@ -8,6 +8,18 @@ pub struct Function {
     pub chunk: Chunk,
 }
 
+#[derive(Clone, Debug)]
+pub struct Closure {
+    pub function: Rc<Function>,
+    obj: Option<Box<Value>>,
+}
+
+impl Closure {
+    pub fn new(function: Rc<Function>, obj: Option<Box<Value>>) -> Self {
+        Self { function, obj }
+    }
+}
+
 #[derive(Clone)]
 pub struct NativeFunction(pub fn(&[Value]) -> Value);
 
@@ -34,6 +46,7 @@ pub enum Value {
     String(String),
     Func(Rc<Function>),
     NativeFunc(NativeFunction),
+    Closure(Rc<Closure>),
 }
 
 impl std::fmt::Display for Value {
@@ -53,6 +66,7 @@ impl std::fmt::Display for Value {
                 }
             ),
             Self::NativeFunc(..) => write!(f, "<native fn>"),
+            Self::Closure(closure) => write!(f, "<closure {}>", closure.function.name),
         }
     }
 }

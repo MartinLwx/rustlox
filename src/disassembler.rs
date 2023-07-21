@@ -45,6 +45,13 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::JumpIfFalse => jump_instruction("OP_JUMP_IF_ELSE", 1, chunk, offset),
         OpCode::Loop => jump_instruction("OP_LOOP", -1, chunk, offset),
         OpCode::Call => byte_instruction("OP_CALL", chunk, offset),
+        OpCode::Closure => {
+            let constant_idx = chunk.code[offset + 1];
+            print!("{:-16} {:04} ", "OP_CLOSURE", constant_idx);
+            println!("'{:?}'", chunk.constants.values[constant_idx as usize]);
+
+            offset + 2
+        }
     }
 }
 

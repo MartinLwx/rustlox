@@ -1,7 +1,7 @@
 use crate::chunk::OpCode;
 use crate::compiler::Compiler;
 use crate::disassembler::disassemble_instruction;
-use crate::value::{Function, FunctionType, NativeFunction, Value};
+use crate::value::{Closure, FunctionType, NativeFunction, Value};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -15,19 +15,15 @@ pub enum InterpretResult {
 
 #[derive(Debug)]
 pub struct CallFrame {
-    function: Rc<Function>,
+    closure: Rc<Closure>,
     ip: usize,
     /// The starts position of this CallFrame in the VM's stack
     slots: usize,
 }
 
 impl CallFrame {
-    pub fn new(function: Rc<Function>, ip: usize, slots: usize) -> Self {
-        Self {
-            function,
-            ip,
-            slots,
-        }
+    pub fn new(closure: Rc<Closure>, ip: usize, slots: usize) -> Self {
+        Self { closure, ip, slots }
     }
 }
 
@@ -66,7 +62,11 @@ impl VM {
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let compiler = Compiler::new(FunctionType::Script);
         let Ok(func) = compiler.compile(source) else {return InterpretResult::CompileError};
-        self.frames.push(CallFrame::new(Rc::new(func), 0, 0));
+        self.frames.push(CallFrame::new(
+            Rc::new(Closure::new(Rc::new(func), None)),
+            0,
+            0,
+        ));
         self.run()
     }
 
@@ -74,15 +74,15 @@ impl VM {
     fn read_byte(&mut self) -> u8 {
         let frame = self.current_frame();
         frame.ip += 1;
-        frame.function.chunk.code[frame.ip - 1]
+        frame.closure.function.chunk.code[frame.ip - 1]
     }
 
     /// Read a two bytes operand
     fn read_short(&mut self) -> u16 {
         let frame = self.current_frame();
         frame.ip += 2;
-        let last_two = frame.function.chunk.code[frame.ip - 2] as u16;
-        let last_one = frame.function.chunk.code[frame.ip - 1] as u16;
+        let last_two = frame.closure.function.chunk.code[frame.ip - 2] as u16;
+        let last_one = frame.closure.function.chunk.code[frame.ip - 1] as u16;
 
         (last_two << 8) | last_one
     }
@@ -90,9 +90,9 @@ impl VM {
     /// For a two bytes byte code: `[Opcode, the index of value]`, return the corresponding value
     fn read_constant(&mut self) -> Value {
         let frame = self.current_frame();
-        let constant_idx = frame.function.chunk.code[frame.ip];
+        let constant_idx = frame.closure.function.chunk.code[frame.ip];
         frame.ip += 1;
-        frame.function.chunk.constants.values[constant_idx as usize].clone()
+        frame.closure.function.chunk.constants.values[constant_idx as usize].clone()
     }
 
     fn binary_operator(&mut self, op: char) -> InterpretResult {
@@ -136,14 +136,14 @@ impl VM {
         // print stack trace
         for frame in self.frames.iter().rev() {
             let instruction = frame.ip - 1;
-            let line = frame.function.chunk.lines[instruction];
+            let line = frame.closure.function.chunk.lines[instruction];
             eprintln!(
                 "[line {}] in {}",
                 line,
-                if frame.function.name.is_empty() {
+                if frame.closure.function.name.is_empty() {
                     "<script>"
                 } else {
-                    &frame.function.name
+                    &frame.closure.function.name
                 }
             );
         }
@@ -166,17 +166,20 @@ impl VM {
     }
 
     /// Create a new CallFrame and push it to `self.frames`
-    fn call(&mut self, func: Rc<Function>, arg_cnt: u8) -> bool {
-        if arg_cnt as usize != func.arity {
+    fn call(&mut self, closure: Rc<Closure>, arg_cnt: u8) -> bool {
+        if arg_cnt as usize != closure.function.arity {
             self.runtime_error(&format!(
                 "Expected {} arguments but got {}.",
-                func.arity, arg_cnt,
+                closure.function.arity, arg_cnt,
             ));
             return false;
         }
         // the starts slots DOES NOT include the function name in the stack
-        self.frames
-            .push(CallFrame::new(func, 0, self.stack.len() - arg_cnt as usize));
+        self.frames.push(CallFrame::new(
+            closure,
+            0,
+            self.stack.len() - arg_cnt as usize,
+        ));
 
         true
     }
@@ -186,7 +189,6 @@ impl VM {
         //       how to solve the ownership issue?
         let callee = self.stack[self.stack.len() - 1 - arg_cnt as usize].clone();
         match callee {
-            Value::Func(f) => self.call(f, arg_cnt),
             Value::NativeFunc(fp) => {
                 let arg_start = self.stack.len() - arg_cnt as usize;
                 let result = fp.0(&self.stack[arg_start..]);
@@ -194,6 +196,7 @@ impl VM {
                 self.stack.push(result);
                 true
             }
+            Value::Closure(closure) => self.call(closure, arg_cnt),
             _ => {
                 self.runtime_error("Can only call functions and classes.");
                 false
@@ -218,7 +221,7 @@ impl VM {
                 }
                 println!();
                 disassemble_instruction(
-                    &self.frames.last().unwrap().function.chunk,
+                    &self.frames.last().unwrap().closure.function.chunk,
                     self.frames.last().unwrap().ip,
                 );
             }
@@ -373,6 +376,11 @@ impl VM {
                     if !self.call_value(arg_cnt) {
                         return InterpretResult::RuntimeError;
                     }
+                }
+                OpCode::Closure => {
+                    let Value::Func(func) = self.read_constant() else {panic!("Impossible");};
+                    let rc_closure = Rc::new(Closure::new(func, None));
+                    self.stack.push(Value::Closure(rc_closure));
                 }
             }
         }

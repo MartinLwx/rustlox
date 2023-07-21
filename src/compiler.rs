@@ -1,7 +1,7 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::disassembler::disassemble_chunk;
 use crate::scanner::{Scanner, Token, TokenType};
-use crate::value::{Function, FunctionType, Value};
+use crate::value::{Closure, Function, FunctionType, Value};
 use crate::vm::InterpretResult;
 use std::rc::Rc;
 
@@ -809,7 +809,7 @@ impl Compiler {
 
         let function = self.end_compiler();
         let val = self.make_constant(Value::Func(Rc::new(function)));
-        self.emit_bytes(OpCode::Constant, val);
+        self.emit_bytes(OpCode::Closure, val);
     }
 
     fn func_declaration(&mut self) {
