@@ -62,11 +62,8 @@ impl VM {
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let compiler = Compiler::new(FunctionType::Script);
         let Ok(func) = compiler.compile(source) else {return InterpretResult::CompileError};
-        self.frames.push(CallFrame::new(
-            Rc::new(Closure::new(Rc::new(func), None)),
-            0,
-            0,
-        ));
+        self.frames
+            .push(CallFrame::new(Rc::new(Closure::new(Rc::new(func))), 0, 0));
         self.run()
     }
 
@@ -207,6 +204,10 @@ impl VM {
     /// `fp` is a function pointer
     fn define_native(&mut self, name: &str, fp: NativeFunction) {
         self.globals.insert(name.to_string(), Value::NativeFunc(fp));
+    }
+
+    fn capture_upvalue(&mut self, slot: usize) -> Value {
+        self.stack[slot].clone()
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -372,18 +373,41 @@ impl VM {
                 OpCode::Call => {
                     let arg_cnt = self.read_byte();
                     // Do not decide callee here because the ownership issue
-                    // let callee = &self.stack[self.stack.len() - 1 - arg_cnt as usize];
                     if !self.call_value(arg_cnt) {
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OpCode::Closure => {
                     let Value::Func(func) = self.read_constant() else {panic!("Impossible");};
-                    let rc_closure = Rc::new(Closure::new(func, None));
+                    let mut closure = Closure::new(func);
+
+                    // todo: push reference in the future
+                    for _ in 0..closure.function.upvalues.len() {
+                        let is_local = self.read_byte();
+                        let index = self.read_byte();
+                        if is_local == 1 {
+                            let offset = self.current_frame().slots + index as usize;
+                            closure.upvalues.push(self.capture_upvalue(offset));
+                        } else {
+                            let val = self.current_frame().closure.upvalues[index as usize].clone();
+                            closure.upvalues.push(val);
+                        }
+                    }
+                    let rc_closure = Rc::new(closure);
                     self.stack.push(Value::Closure(rc_closure));
                 }
-                OpCode::SetUpvalue => {}
-                OpCode::GetUpvalue => {}
+                OpCode::SetUpvalue => {
+                    // let slot = self.read_byte();
+                    // let val = self.stack.last().unwrap().clone();
+                    // self.current_frame().closure.upvalues[slot as usize].clone();
+                }
+                OpCode::GetUpvalue => {
+                    // look up the corresponding upvalue and clone the value in that slot
+                    // todo: performance issue
+                    let slot = self.read_byte();
+                    let val = self.current_frame().closure.upvalues[slot as usize].clone();
+                    self.stack.push(val);
+                }
             }
         }
     }

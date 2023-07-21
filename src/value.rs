@@ -1,4 +1,5 @@
 use crate::chunk::Chunk;
+use crate::compiler::Upvalue;
 use std::rc::Rc;
 #[derive(Default, Clone, Debug)]
 pub struct Function {
@@ -6,17 +7,27 @@ pub struct Function {
     /// The number of parameters the function expects
     pub arity: usize,
     pub chunk: Chunk,
+    pub upvalues: Vec<Upvalue>,
+}
+
+impl std::fmt::Display for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<fn {}>", self.name)
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Closure {
     pub function: Rc<Function>,
-    obj: Option<Box<Value>>,
+    pub upvalues: Vec<Value>,
 }
 
 impl Closure {
-    pub fn new(function: Rc<Function>, obj: Option<Box<Value>>) -> Self {
-        Self { function, obj }
+    pub fn new(function: Rc<Function>) -> Self {
+        Self {
+            function,
+            upvalues: vec![],
+        }
     }
 }
 
@@ -66,7 +77,7 @@ impl std::fmt::Display for Value {
                 }
             ),
             Self::NativeFunc(..) => write!(f, "<native fn>"),
-            Self::Closure(closure) => write!(f, "<closure {}>", closure.function.name),
+            Self::Closure(closure) => write!(f, "<fn {}>", closure.function.name),
         }
     }
 }

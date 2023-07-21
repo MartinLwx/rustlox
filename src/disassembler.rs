@@ -49,9 +49,20 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::Closure => {
             let constant_idx = chunk.code[offset + 1];
             print!("{:-16} {:04} ", "OP_CLOSURE", constant_idx);
-            println!("'{:?}'", chunk.constants.values[constant_idx as usize]);
+            let Value::Func(func) = &chunk.constants.values[constant_idx as usize] else {panic!("Impossible")};
+            println!("'{}'", func);
 
-            offset + 2
+            for (idx, v) in func.upvalues.iter().enumerate() {
+                println!(
+                    "{:04}    |                       {} {}",
+                    offset + idx + 1,
+                    if v.is_local { "local" } else { "upvalue" },
+                    v.index
+                );
+            }
+
+            // offset
+            offset + func.upvalues.len() * 2 + 2
         }
         OpCode::GetUpvalue => byte_instruction("OP_GET_UPVALUE", chunk, offset),
         OpCode::SetUpvalue => byte_instruction("OP_SET_UPVALUE", chunk, offset),

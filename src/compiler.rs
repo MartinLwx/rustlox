@@ -150,7 +150,7 @@ impl Local {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Upvalue {
     pub is_local: bool,
     pub index: usize,
@@ -171,7 +171,6 @@ struct CompilerState {
     scope_depth: i32,
     function: Function,
     function_type: FunctionType,
-    upvalues: Vec<Upvalue>,
 }
 
 impl CompilerState {
@@ -229,21 +228,21 @@ impl CompilerState {
     /// Returns the index of the upvalue in `self.state.upvalues`
     fn add_upvalue(&mut self, idx: usize, is_local: bool) -> usize {
         // Check if this upvalue has been added before
-        for (i, v) in self.upvalues.iter().enumerate() {
+        for (i, v) in self.function.upvalues.iter().enumerate() {
             if v.index == idx && v.is_local == is_local {
                 return i;
             }
         }
 
-        if self.upvalues.len() == u8::MAX as usize {
+        if self.function.upvalues.len() == u8::MAX as usize {
             // todo! how to return error message from this
             // self.error("Too many closure variables in function.");
             return 0;
         }
 
-        self.upvalues.push(Upvalue::new(is_local, idx));
+        self.function.upvalues.push(Upvalue::new(is_local, idx));
 
-        self.upvalues.len() - 1
+        self.function.upvalues.len() - 1
     }
 }
 
@@ -762,19 +761,16 @@ impl Compiler {
 
     /// Consume the next token, which must be an identifier. Add its lexeme to the chunks's
     /// constants table as a string, and then returns the constant table index where it was added
-    fn parse_variable(&mut self, error_msg: &str) -> (String, u8) {
+    fn parse_variable(&mut self, error_msg: &str) -> u8 {
         self.consume(TokenType::Identifier, error_msg);
-
         self.declare_variable();
         // Exit the function  and return a dummy index if we're in a local scope
-        // , because we don't need to store the variable's name into the sontant table.
+        // , because we don't need to store the variable's name into the constant table.
         if self.state.scope_depth > 0 {
-            return (String::new(), 0);
+            return 0;
         }
-
-        let identifier_name = self.parser.previous.lexeme.clone();
         let previous_token = std::mem::take(&mut self.parser.previous);
-        (identifier_name, self.identifier_constant(previous_token))
+        self.identifier_constant(previous_token)
     }
 
     /// Add the local variable to the compilers's list of variables
@@ -835,7 +831,7 @@ impl Compiler {
     }
 
     fn var_declaration(&mut self) {
-        let (_, global) = self.parse_variable("Expect variable name.");
+        let global = self.parse_variable("Expect variable name.");
 
         // look for an initializer expresssion
         if self.my_match(TokenType::Equal) {
@@ -872,7 +868,7 @@ impl Compiler {
                 if self.state.function.arity > 255 {
                     self.error_at_current("Can't have more than 255 parameters.");
                 }
-                let (_, constant) = self.parse_variable("Expect parameter name.");
+                let constant = self.parse_variable("Expect parameter name.");
                 self.define_variable(constant);
 
                 if !self.my_match(TokenType::Comma) {
@@ -884,21 +880,24 @@ impl Compiler {
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
         self.block();
 
+        // Note: after self.end_compiler(), the current CompilerState will revert
+        // there is no way to get upvalues. So I first clone the upvalues
+        // todo! can we find a better way?
+        let upvalues = self.state.function.upvalues.clone();
         let function = self.end_compiler();
         let val = self.make_constant(Value::Func(Rc::new(function)));
         self.emit_bytes(OpCode::Closure, val);
-        for i in 0..self.state.upvalues.len() {
-            self.emit_byte(if self.state.upvalues[i].is_local {
-                1
-            } else {
-                0
-            });
-            self.emit_byte(self.state.upvalues[i].index as u8);
+
+        for i in 0..upvalues.len() {
+            self.emit_byte(if upvalues[i].is_local { 1 } else { 0 });
+            self.emit_byte(upvalues[i].index as u8);
         }
     }
 
     fn func_declaration(&mut self) {
-        let (func_name, global) = self.parse_variable("Expect func name");
+        let func_name = self.parser.current.lexeme.clone();
+        let global = self.parse_variable("Expect func name");
+
         self.mark_initialized();
         self.function(func_name, FunctionType::Function);
         self.define_variable(global);
