@@ -578,7 +578,6 @@ impl Compiler {
 
     /// To "leave" a scope, we just need to decrease the current depth
     fn end_scope(&mut self) {
-        println!("ready to end_scope {:?}", self.state.locals);
         self.state.scope_depth -= 1;
         while let Some(v) = self.state.locals.last() {
             // Check if this local variable is captured, because this may need to get hoisted onto
@@ -939,12 +938,13 @@ impl Compiler {
         let mut set_op = OpCode::SetLocal;
 
         let mut arg = 0_u8;
-        if let Some(idx) = self.state.resolve_upvalue(&token) {
+        // Note: the if let order matters, which will decide the priority
+        if let Ok(idx) = self.state.resolve_local(&token) {
+            arg = idx as u8;
+        } else if let Some(idx) = self.state.resolve_upvalue(&token) {
             arg = idx as u8;
             get_op = OpCode::GetUpvalue;
             set_op = OpCode::SetUpvalue;
-        } else if let Ok(idx) = self.state.resolve_local(&token) {
-            arg = idx as u8;
         } else {
             arg = self.identifier_constant(token);
             get_op = OpCode::GetGlobal;

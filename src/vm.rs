@@ -41,6 +41,9 @@ pub struct VM {
     pub stack: Vec<Value>,
 
     globals: HashMap<String, Value>,
+
+    /// All open upvalues that point to variables still on the stack
+    open_upvalues: Vec<Rc<ObjUpvalue>>,
 }
 
 impl VM {
@@ -49,6 +52,7 @@ impl VM {
             frames: vec![],
             stack: vec![],
             globals: HashMap::new(),
+            open_upvalues: vec![],
         };
         vm.define_native("clock", NativeFunction(clock));
         vm
@@ -211,10 +215,21 @@ impl VM {
     }
 
     /// The variable get captured is located in `slot`
-    fn capture_upvalue(&mut self, slot: usize) -> ObjUpvalue {
-        ObjUpvalue::new(slot, self.stack[slot].clone())
+    fn capture_upvalue(&mut self, slot: usize) -> Rc<ObjUpvalue> {
+        // Searching for an existing upvalue pointing to the `slot`
+        for val in &self.open_upvalues {
+            if val.location == slot {
+                return Rc::clone(&val);
+            }
+        }
+        let upvalue = Rc::new(ObjUpvalue::new(slot, self.stack[slot].clone()));
+        self.open_upvalues.push(upvalue);
+        self.open_upvalues.last().unwrap().clone()
     }
 
+    // Move the captured local variable in `slot` to heap
+    // After that, the VM is free to discard the stack `slot`
+    // todo: It seems that I don't need to close upvalues because I have done this in [`capture_upvalue`]?
     fn close_upvalues(&mut self, slot: usize) {}
 
     fn run(&mut self) -> InterpretResult {
@@ -420,6 +435,8 @@ impl VM {
                 OpCode::ClosedUpvalue => {
                     // when we execute this instruction, the `Value` to hoisted is on top of the
                     // stack
+                    // self.close_upvalues(self.stack.len() - 1);
+                    self.stack.pop();
                 }
             }
         }

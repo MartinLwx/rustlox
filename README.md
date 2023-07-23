@@ -21,7 +21,7 @@ A naive benchmark in my MBP Intel i5-8257U @1.40GHz:
 
 | operations | Rust(`-O`)    | Python 3.10.9 | rustlox | [PyLox](https://github.com/MartinLwx/pylox) |
 | ---------- | ------------- | ------------- | ------- | ------------------------------------------- |
-| `fib(35)`  | ~ 0.03s       | ~ 3s          | ~ 7s    | ~ 600s                                      |
+| `fib(35)`  | ~ 0.03s       | ~ 3s          | ~ 8s    | ~ 600s                                      |
 
 
 ## Notes

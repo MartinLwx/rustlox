@@ -37,7 +37,7 @@ impl ObjUpvalue {
 #[derive(Clone, Debug)]
 pub struct Closure {
     pub function: Rc<Function>,
-    pub upvalues: Vec<ObjUpvalue>,
+    pub upvalues: Vec<Rc<ObjUpvalue>>,
 }
 
 impl Closure {
