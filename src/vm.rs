@@ -1,7 +1,7 @@
 use crate::chunk::OpCode;
 use crate::compiler::Compiler;
 use crate::disassembler::disassemble_instruction;
-use crate::value::{Closure, FunctionType, NativeFunction, Value};
+use crate::value::{Closure, FunctionType, NativeFunction, ObjUpvalue, Value};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -56,6 +56,10 @@ impl VM {
 
     pub fn current_frame(&mut self) -> &mut CallFrame {
         self.frames.last_mut().unwrap()
+    }
+
+    pub fn current_closure(&mut self) -> &Closure {
+        &self.current_frame().closure
     }
 
     /// Runs the chunk and then responds with a value
@@ -206,9 +210,12 @@ impl VM {
         self.globals.insert(name.to_string(), Value::NativeFunc(fp));
     }
 
-    fn capture_upvalue(&mut self, slot: usize) -> Value {
-        self.stack[slot].clone()
+    /// The variable get captured is located in `slot`
+    fn capture_upvalue(&mut self, slot: usize) -> ObjUpvalue {
+        ObjUpvalue::new(slot, self.stack[slot].clone())
     }
+
+    fn close_upvalues(&mut self, slot: usize) {}
 
     fn run(&mut self) -> InterpretResult {
         loop {
@@ -378,18 +385,19 @@ impl VM {
                     }
                 }
                 OpCode::Closure => {
-                    let Value::Func(func) = self.read_constant() else {panic!("Impossible");};
+                    let Value::Func(func) = self.read_constant() else {panic!("impossible");};
                     let mut closure = Closure::new(func);
 
                     // todo: push reference in the future
                     for _ in 0..closure.function.upvalues.len() {
                         let is_local = self.read_byte();
-                        let index = self.read_byte();
+                        let upvalue_idx = self.read_byte();
                         if is_local == 1 {
-                            let offset = self.current_frame().slots + index as usize;
-                            closure.upvalues.push(self.capture_upvalue(offset));
+                            let location = self.current_frame().slots + upvalue_idx as usize;
+                            closure.upvalues.push(self.capture_upvalue(location));
                         } else {
-                            let val = self.current_frame().closure.upvalues[index as usize].clone();
+                            let val =
+                                self.current_frame().closure.upvalues[upvalue_idx as usize].clone();
                             closure.upvalues.push(val);
                         }
                     }
@@ -397,16 +405,21 @@ impl VM {
                     self.stack.push(Value::Closure(rc_closure));
                 }
                 OpCode::SetUpvalue => {
-                    // let slot = self.read_byte();
-                    // let val = self.stack.last().unwrap().clone();
-                    // self.current_frame().closure.upvalues[slot as usize].clone();
+                    let slot = self.read_byte();
+                    let val = self.stack.last().unwrap().clone();
+                    let upvalue = &self.current_frame().closure.upvalues[slot as usize];
+                    upvalue.obj.replace(val);
                 }
                 OpCode::GetUpvalue => {
                     // look up the corresponding upvalue and clone the value in that slot
                     // todo: performance issue
                     let slot = self.read_byte();
-                    let val = self.current_frame().closure.upvalues[slot as usize].clone();
-                    self.stack.push(val);
+                    let upvalue = self.current_frame().closure.upvalues[slot as usize].clone();
+                    self.stack.push((*upvalue.obj.borrow_mut()).clone());
+                }
+                OpCode::ClosedUpvalue => {
+                    // when we execute this instruction, the `Value` to hoisted is on top of the
+                    // stack
                 }
             }
         }

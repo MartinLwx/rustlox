@@ -1,5 +1,6 @@
 use crate::chunk::Chunk;
 use crate::compiler::Upvalue;
+use std::cell::RefCell;
 use std::rc::Rc;
 #[derive(Default, Clone, Debug)]
 pub struct Function {
@@ -16,10 +17,27 @@ impl std::fmt::Display for Function {
     }
 }
 
+/// The runtime representation for upvalues
+#[derive(Clone, Debug)]
+pub struct ObjUpvalue {
+    /// Points to the closed-over variable in the stack by the index
+    pub location: usize,
+    pub obj: RefCell<Value>,
+}
+
+impl ObjUpvalue {
+    pub fn new(location: usize, obj: Value) -> Self {
+        Self {
+            location,
+            obj: RefCell::new(obj),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Closure {
     pub function: Rc<Function>,
-    pub upvalues: Vec<Value>,
+    pub upvalues: Vec<ObjUpvalue>,
 }
 
 impl Closure {

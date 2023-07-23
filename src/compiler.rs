@@ -142,14 +142,21 @@ struct Local {
     name: Token,
     /// the level of nesting where this local variable was declared
     depth: i32,
+    /// Tell if a given local variable is captured by a closure
+    is_captured: bool,
 }
 
 impl Local {
-    pub fn new(name: Token, depth: i32) -> Self {
-        Self { name, depth }
+    pub fn new(name: Token, depth: i32, is_captured: bool) -> Self {
+        Self {
+            name,
+            depth,
+            is_captured,
+        }
     }
 }
 
+/// This `Upvalue` is a field of [`Function`] in compiling the bytecode
 #[derive(Clone, Debug, Default)]
 pub struct Upvalue {
     pub is_local: bool,
@@ -210,9 +217,9 @@ impl CompilerState {
     /// Returns the "upvalue index" if it found, else returns None
     fn resolve_upvalue(&mut self, name: &Token) -> Option<usize> {
         if let Some(enclosing) = &mut self.enclosing {
-            // case 1. upvalue stores a local variable in any
             // try to resolve the `name` as a local variable in the enclosing environment
             if let Ok(idx) = enclosing.resolve_local(name) {
+                enclosing.locals[idx].is_captured = true;
                 return Some(self.add_upvalue(idx, true));
             }
 
@@ -571,10 +578,17 @@ impl Compiler {
 
     /// To "leave" a scope, we just need to decrease the current depth
     fn end_scope(&mut self) {
+        println!("ready to end_scope {:?}", self.state.locals);
         self.state.scope_depth -= 1;
         while let Some(v) = self.state.locals.last() {
+            // Check if this local variable is captured, because this may need to get hoisted onto
+            // the heap
             if v.depth > self.state.scope_depth {
-                self.emit_byte(OpCode::Pop);
+                self.emit_byte(if v.is_captured {
+                    OpCode::ClosedUpvalue
+                } else {
+                    OpCode::Pop
+                });
                 self.state.locals.pop().unwrap();
             } else {
                 break;
@@ -780,7 +794,7 @@ impl Compiler {
             return;
         }
         // -1 is a special sentinel value - this local variable is in "unitialized" state
-        self.state.locals.push(Local::new(token, -1));
+        self.state.locals.push(Local::new(token, -1, false));
     }
 
     fn declare_variable(&mut self) {
